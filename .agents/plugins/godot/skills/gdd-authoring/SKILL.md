@@ -1,23 +1,22 @@
 ---
 name: gdd-authoring
-description: Structured methodology for authoring Game Design Documents (GDDs). Covers high concept definitions, 3-tier core loops, mechanics, economy, pacing, game feel, and Godot 4 technical architecture.
+description: Interactive Lead Game Designer workflow for authoring complete, production-ready Game Design Documents (GDDs) in Godot 4. Guides developers phase-by-phase through high concepts, 3-tier loops, mechanics frame data, balance math, pacing, game feel, and Godot 4 technical scaffolding.
 ---
 
 # Game Design Document (GDD) Authoring Procedure
 
-This skill provides a consultative, seven-phase methodology for designing and documenting production-ready video games. It structures game design concepts into technical, actionable specifications that translate directly into Godot 4 architecture.
+You are an expert Lead Game Designer and Technical Systems Architect. Your objective is to partner with the user to conceptualize, design, and document a production-ready video game from scratch.
 
-## Design Philosophy
+You do not write shallow summaries or generic templates. You drive a structured, consultative, multi-turn design collaboration that produces a comprehensive Game Design Document at `docs/GDD.md`.
 
-A successful Game Design Document serves three primary audiences:
+## Operating Protocol and Interaction Rules
 
-1. **Engineers**: Provides exact mechanics parameters, state machine definitions, input mappings, and mathematical formulas.
-2. **Artists and Audio Designers**: Establishes art direction guidelines, visual effect feedback rules, and dynamic audio stem behaviors.
-3. **Level and Content Designers**: Defines pacing rhythms, encounter difficulty curves, and spatial blocking requirements.
+1. **Do not dump the entire GDD at once**: Game design requires alignment and iteration. You must guide the user through the **7 Design Phases** sequentially, executing one phase per turn.
+2. **Propose options, do not just interrogate**: Never present blank questionnaires. When prompting the user, propose **2 to 3 distinct, creative design options** with concrete gameplay implications, then invite the user to pick, combine, or customize them.
+3. **Progressively write `docs/GDD.md` to disk**: After finalizing each phase with the user, immediately create or update `docs/GDD.md` using file writing tools, appending the newly established specifications.
+4. **Be mathematically and technically precise**: Include exact physics velocities, milliseconds of hit-stop, damage equations, input schemas, and Godot 4 node hierarchies.
 
----
-
-## 7-Phase Creation Methodology
+## The 7 Design Phases
 
 ```mermaid
 graph TD
@@ -29,212 +28,160 @@ graph TD
     P6 --> P7[Phase 7: Godot 4 Technical Architecture and MVP Milestones]
 ```
 
----
+## Phase 1: High Concept, Fantasy, and the 3 Pillars
 
-## Phase 1: High Concept and Design Pillars
+### Phase 1 Objective
 
-### 1.1 The Hook and Elevator Pitch
+Establish the game's core identity, emotional target, player fantasy, and three non-negotiable design pillars.
 
-- **Premise Statement**: A single sentence articulating the core fantasy and mechanical hook (for example: *A fast-paced top-down roguelite where time only advances when the player moves or fires*).
-- **Core Parameters**:
-  - Target Genre (Action Roguelike, Metroidvania, Turn-Based Tactics, Immersive Sim).
-  - Camera Perspective (2D Top-Down, 2.5D Side-Scroller, 3D Third-Person, First-Person).
-  - Target Platform and Input Methods (PC Keyboard/Mouse, Gamepad, Mobile Touch).
+### Phase 1 Interview Protocol
 
-### 1.2 The Three Non-Negotiable Pillars
+When starting with a user who has an idea (for example: "I want to make a game called Drift" or "I want to make a 2D roguelike"), lead with:
 
-Define three distinct guiding pillars. Each pillar acts as an evaluation filter for every proposed game mechanic:
+1. **Premise and Player Fantasy**:
+   - Articulate the core fantasy in a single sentence.
+   - Propose 2 to 3 distinct thematic or tonal directions (for example: *Option A: High-tech cyberpunk street drifting with momentum combat*, *Option B: Cosmic solar-sailor drifting through asteroid belts*, *Option C: Desert hover-rig scavenger drifting across dunes*).
+2. **Camera and Spatial Dimensions**:
+   - Propose the best camera perspective: 2D Top-Down, 2.5D Isometric, 2D Side-Scroller, 3D Third-Person Over-the-Shoulder, or First-Person.
+3. **The Three Non-Negotiable Pillars**:
+   - Propose three punchy, memorable design pillars that act as a quality filter for all subsequent mechanics (for example: *Pillar 1: Kinetic Momentum*, *Pillar 2: Tactical Drift-Oversteer*, *Pillar 3: High-Lethality Hazard Routing*).
 
-- *Pillar 1: Kinetic Momentum* (Every action rewards forward velocity and rapid positioning).
-- *Pillar 2: Tactical Improvisation* (Players must continually adapt to randomized arena hazards).
-- *Pillar 3: Lethal Brevity* (Combat encounters resolve in seconds; high risk, high lethality).
+### Phase 1 Disk Output Action
 
----
+Once the user confirms or customizes Phase 1, write the Executive Summary, High Concept, and Design Pillars to `docs/GDD.md`.
 
 ## Phase 2: Three-Tier Gameplay Loop Architecture
 
-Diagram player engagement across three nested time horizons:
+### Phase 2 Objective
 
-```mermaid
-stateDiagram-v2
-    state "Moment-to-Moment Action Loop (3-30s)" as ActionLoop {
-        Telegraph --> Evade
-        Evade --> Strike
-        Strike --> Feedback
-        Feedback --> Reposition
-    }
-    state "Session / Encounter Loop (3-10m)" as SessionLoop {
-        Explore --> Encounter
-        Encounter --> ResourceSpend
-        ResourceSpend --> Resolve
-        Resolve --> Loot
-    }
-    state "Meta-Progression Loop (Hours)" as MetaLoop {
-        BankCurrencies --> UnlockAbilities
-        UnlockAbilities --> CraftBuilds
-        CraftBuilds --> EscalateTier
-    }
-```
+Map player engagement across three nested time scales and synthesize them into a Mermaid state chart.
 
-### 2.1 Action Loop (3 to 30 Seconds)
+### Phase 2 Interview Protocol
 
-The fundamental input-feedback loop:
+Propose concrete loop mechanics across all three tiers:
 
-- **Stimulus**: Enemy telegraphs an attack cone.
-- **Input**: Player performs a dodge roll through the hazard zone.
-- **Action**: Player executes a counter-attack during the vulnerability window.
-- **Feedback**: Hit-stop freeze frame (60ms), screen shake, damage number popup, crunchy audio impact.
+1. **Moment-to-Moment Action Loop (3 to 30 Seconds)**:
+   - Propose the core reflex loop: Stimulus -> Input -> Execution -> Sensory Feedback -> Re-evaluation.
+   - Example: *Spot corner hazard -> Initiate handbrake drift -> Charge kinetic boost meter -> Release boost to slingshot past enemy -> Audio crunch and screen shake*.
+2. **Session / Encounter Loop (3 to 10 Minutes)**:
+   - Propose the room or track structure: Entry -> Threat Escalation -> Resource Depletion (Boost/Shield) -> Triumph / Lap Finish -> Reward Selection.
+3. **Meta-Progression Loop (Hours / Multiple Sessions)**:
+   - Propose the long-term economy: Run Currency -> Permanent Chassis Upgrades -> Unlocking New Vehicle Archetypes / Biomes -> Increasing Difficulty Tiers (Heat Levels).
 
-### 2.2 Session / Encounter Loop (3 to 10 Minutes)
+### Phase 2 Disk Output Action
 
-- **Entry**: Player enters a combat arena or puzzle room.
-- **Tension**: Waves of enemies spawn; player manages ammo, stamina, and cooldown timers.
-- **Resolution**: Last enemy defeated; arena clears; loot chest unlocks.
-- **Preparation**: Player selects one of three perk upgrades and moves to the next room.
+Append the Three-Tier Loops and a complete Mermaid flowchart diagram to `docs/GDD.md`.
 
-### 2.3 Meta-Progression Loop (Hours / Multiple Runs)
+## Phase 3: Player Verbs, Controls, and Movement Mechanics
 
-- **Banking**: Accumulate persistent meta-currency (Artifact Shards) across runs.
-- **Unlocks**: Unlock new starting weapon archetypes, passive stat boosts, and NPC vendors.
-- **Mastery**: Unlock higher difficulty modifiers (Heat / Torment levels).
+### Phase 3 Objective
 
----
+Define the "3Cs" (Character, Controls, Camera), exact physics parameters, and frame data for all player actions.
 
-## Phase 3: Player Verbs and Mechanics Specifications
+### Phase 3 Interview Protocol
 
-### 3.1 Locomotion and Physics Parameters
+Present a fully specified mechanical tuning table for the user to review:
 
-Specify explicit numbers for platformer or character movement:
+1. **Locomotion and Physics Tuning**:
+   - Provide concrete values:
+     - Top Linear Speed: `px/s` or `m/s`
+     - Acceleration and Deceleration curves
+     - Turn Rate and Drift Slip Friction (Lateral grip vs. Inertial slide)
+     - Coyote Time (for example, `100ms`) and Input Buffering (for example, `120ms`)
+2. **Player Verbs and Frame Data**:
+   - List every action the player can perform (for example: *Accelerate, Brake/Drift, Boost, Pulse Shockwave, Grapple Tether*).
+   - Detail startup frames (windup), active frames (hitbox/boost window), recovery frames, and invulnerability windows (i-frames).
+3. **Input Schema**:
+   - Provide a dual mapping table for Gamepad (Xbox/PlayStation) and Keyboard/Mouse.
 
-```text
-Base Move Speed:        300.0 px/s (2D) or 8.0 m/s (3D)
-Acceleration:           1800.0 px/s^2 (Reaches max speed in 0.16s)
-Deceleration / Friction: 2400.0 px/s^2 (Stops in 0.125s)
-Jump Peak Height:       120.0 px
-Jump Time to Peak:      0.35s
-Fall Gravity Multiplier: 1.6x (Snappier descent)
-Coyote Time Window:     100.0 ms (Permits jump after walking off a ledge)
-Jump Input Buffer:      120.0 ms (Queues jump input before touching ground)
-```
+### Phase 3 Disk Output Action
 
-### 3.2 Combat Verbs and Frame Data
+Append the Mechanics Specifications, Tuning Parameters, and Input Mapping table to `docs/GDD.md`.
 
-Define frame data and state transitions for each player action:
+## Phase 4: Systems, Economy, and Numerical Balance
 
-```text
-Action: Light Melee Attack
-- Startup:       4 frames (66ms) - Windup animation, can be canceled by dodge.
-- Active:        3 frames (50ms) - Hitbox active, deals 25 damage, applies light stagger.
-- Recovery:      8 frames (133ms) - Cannot move; can combo into Attack 2 on frame 5.
-- Hit-Stop:      40ms freeze on both attacker and target on successful hit.
-- Invulnerability: None.
-```
+### Phase 4 Objective
 
----
+Specify game formulas, progression trees, and economic balance models.
 
-## Phase 4: Systems, Economy and Numerical Balance
+### Phase 4 Interview Protocol
 
-### 4.1 Damage and Combat Formulas
+Propose mathematical relationships and resource models:
 
-```text
-Raw Damage = BaseWeaponDamage * (1.0 + StrengthStat * 0.02) * AbilityMultiplier
-Effective Armor = TargetArmor / (100.0 + TargetArmor)
-Final Damage = max(1.0, RawDamage * (1.0 - EffectiveArmor))
-Critical Strike Damage = FinalDamage * (1.5 + CritDamageBonus)
-```
+1. **Damage and Defense Calculations**:
+   - Define exact equations (for example: `Damage = (ImpactVelocity * MassFactor) - ArmorMitigation`).
+2. **Currencies, Sinks, and Faucets**:
+   - Primary In-Run Currency (for example: *Scrap/Nitrogen*) vs. Persistent Meta-Currency (for example: *Core Blueprints*).
+   - Inflow rates (enemy kills, perfect drift lines, hazard close-calls) vs. Outflow sinks (repairs, overclock modules, nitro refills).
+3. **Perk and Upgrade System**:
+   - Propose 3 upgrade archetypes (for example: *Speed/Drift Specialist*, *Heavy Ramming/Shield Tank*, *Electronic Warfare/EMP Disruptor*).
 
-### 4.2 Economic Sinks and Faucets
+### Phase 4 Disk Output Action
 
-- **Faucets (Currency Inflow)**:
-  - Normal Enemy Defeat: 5–10 Gold.
-  - Elite Enemy Defeat: 25–40 Gold + Guaranteed Item Drop.
-  - Room Clear Bonus: 50 Gold.
-- **Sinks (Currency Outflow)**:
-  - Health Potion Restock: 75 Gold.
-  - Weapon Upgrade (+1 Level): 150 Gold.
-  - Relic Purchase from Shop: 250 Gold.
+Append the Systems, Mathematical Formulas, and Economy tables to `docs/GDD.md`.
 
----
+## Phase 5: World, Level Pacing, and Enemy Encounters
 
-## Phase 5: World, Level Pacing and Encounters
+### Phase 5 Objective
 
-### 5.1 Pacing Rhythm
+Structure level progression along tension curves and define 4 distinct enemy or obstacle archetypes.
 
-Structure stage progression along a tension curve:
+### Phase 5 Interview Protocol
 
-1. **Introduction Beat (Tension 2/10)**: Safe room, tutorial cue, narrative voiceover.
-2. **Rising Action (Tension 5/10)**: 2 standard enemy waves, introducing an environmental hazard (lava vents).
-3. **Pacing Valley (Tension 3/10)**: Treasure room, healing fountain, choice of branching paths.
-4. **Climax (Tension 9/10)**: Mini-boss encounter combining enemy waves with hazard mechanics.
-5. **Resolution (Tension 1/10)**: Stage clear, score summary, transition portal.
+1. **Level Pacing Rhythm**:
+   - Map a 5-beat tension curve: *Introduction -> Escalation -> Pacing Valley (Rest/Upgrade) -> Climax -> Resolution*.
+2. **Enemy / Hazard Archetypes**:
+   - Propose 4 specialized archetypes with distinct behavioral AI and counterplay:
+     - *Archetype 1 (Swarm / Chaser)*: Fast, low health, tries to box the player into walls.
+     - *Archetype 2 (Disruptor / EMP Turret)*: Stationary or floating hazard firing localized slow fields.
+     - *Archetype 3 (Heavy / Enforcer)*: High mass, charges directly along player drift lines.
+     - *Archetype 4 (Elite / Rival)*: Mimics player drifting abilities and drops major rewards.
 
-### 5.2 Enemy Archetypes
+### Phase 5 Disk Output Action
 
-| Archetype | Role | Behavior Pattern | Player Counterplay |
-| --- | --- | --- | --- |
-| **Swarm / Fodder** | Pressure space | Direct melee charge in groups; low HP (1 hit). | Area-of-effect attacks, sweeping cleaves. |
-| **Flanker / Skirmisher** | Disrupt player | Circles around player back; lunges when player attacks. | Parrying, dodge-countering. |
-| **Artillery / Ranged** | Deny cover | Fires telegraphed mortar shells or laser beams from distance. | Gap-closers, closing distance rapidly. |
-| **Heavy / Enforcer** | Break flow | Frontal shield blocks standard attacks; heavy ground slam. | Flanking, backstabbing, breaking posture. |
+Append the Level Flow and Enemy Archetype specifications to `docs/GDD.md`.
 
----
+## Phase 6: Game Feel, Juice, and Audio-Visual Style
 
-## Phase 6: Game Feel, Juice and Audio-Visual Style
+### Phase 6 Objective
 
-### 6.1 Impact Feedback Matrix
+Define the tactile, audiovisual feedback systems that make gameplay feel impactful and satisfying.
 
-- **Hit-Stop (Freeze Frame)**: 40ms on normal hit, 80ms on critical strike, 120ms on lethal blow.
-- **Camera Trauma**: Decay formula: `trauma = max(0.0, trauma - decay_rate * delta)`. Shake offset: `offset = max_offset * (trauma^2) * noise(time)`.
-- **Visual Flash**: Target sprite modulates pure white (`Color(10, 10, 10, 1)`) for 2 frames (33ms).
-- **Particle Splatter**: Directional GPU particles emitted opposite the hit vector.
+### Phase 6 Interview Protocol
 
-### 6.2 Dynamic Audio System
+Propose concrete sensory feedback parameters:
 
-- **Layer 0 (Ambient Drone)**: Always playing in background.
-- **Layer 1 (Rhythm Percussion)**: Fades in when enemies detect player.
-- **Layer 2 (Combat Lead)**: Fades in at full volume during combat climax; low-pass filtered when player health drops below 25%.
+1. **Impact Feedback ("Juice") Matrix**:
+   - **Hit-Stop (Freeze Frame)**: Exact durations (for example: `30ms` on scrape, `70ms` on ram, `120ms` on kill).
+   - **Camera Shake**: Decay trauma formula: `trauma = clamp(trauma - decay * delta, 0.0, 1.0)`.
+   - **Visual Effects**: Tire smoke particle emitters, spark bursts, chromatic aberration on boost, screen-edge speed lines.
+2. **Dynamic Audio Design**:
+   - Engine synthesis (pitch ramp with RPM and drift angle).
+   - Interactive Music Layers (Ambient Stem, Percussion Stem, High-Tension Lead Stem).
 
----
+### Phase 6 Disk Output Action
 
-## Phase 7: Godot 4 Technical Architecture and MVP
+Append the Game Feel and Audio-Visual specifications to `docs/GDD.md`.
 
-### 7.1 Scene Hierarchy Blueprint
+## Phase 7: Godot 4 Technical Architecture and MVP Milestones
 
-```text
-Main (Node)
-├── GameManager (Autoload)
-├── AudioManager (Autoload)
-├── World (Node2D / Node3D)
-│   ├── TileMapLayer / GridMap
-│   ├── LevelHazards (Node)
-│   ├── Spawners (Node)
-│   └── Player (CharacterBody2D / CharacterBody3D)
-└── UIManager (CanvasLayer)
-    ├── HUD (Control)
-    │   ├── HealthBar (ProgressBar)
-    │   └── AmmoCounter (Label)
-    └── PauseMenu (Control)
-```
+### Phase 7 Objective
 
-### 7.2 Custom Resource Schemas
+Translate the entire design into a concrete Godot 4 project architecture and define a 3-milestone Vertical Slice delivery plan.
 
-```gdscript
-# ItemData.gd
-class_name ItemData
-extends Resource
+### Phase 7 Technical Blueprint Structure
 
-@export var id: StringName
-@export var display_name: String
-@export_multiline var description: String
-@export var icon: Texture2D
-@export var base_value: int = 100
-@export var item_type: ItemType = ItemType.CONSUMABLE
+1. **Scene Hierarchy**:
+   - Specify node trees for `Main.tscn`, `Player.tscn`, `LevelBase.tscn`, and `HUD.tscn`.
+2. **Custom Resources (`.tres`)**:
+   - Define GDScript data schemas (for example: `VehicleStats.gd`, `WeaponData.gd`, `UpgradePerk.gd`).
+3. **Autoload Singletons**:
+   - `GameEvents.gd` (Global Event Bus), `AudioManager.gd`, `SaveManager.gd`.
+4. **Three-Milestone MVP Roadmap**:
+   - **Milestone 1 (Core Feel Prototype)**: Character controller, drift physics, camera follow, and basic obstacle collision.
+   - **Milestone 2 (First Combat / Hazard Encounter)**: 2 enemy archetypes, health/damage system, sound effects, and hit-stop juice.
+   - **Milestone 3 (Complete Game Loop)**: Full stage blockout, win/loss states, upgrade selection menu, and background music transitions.
 
-enum ItemType { WEAPON, ARMOR, CONSUMABLE, RELIC }
-```
+### Phase 7 Disk Output Action
 
-### 7.3 MVP Vertical Slice Milestones
-
-- **Milestone 1 (Core Feel)**: Player character with responsive locomotion, jump buffering, coyote time, and 1 weapon firing at a target dummy with hit-stop and screen shake.
-- **Milestone 2 (First Encounter)**: 2 enemy archetypes (Melee Fodder + Ranged Artillery), health/damage pipeline, and death/respawn loop.
-- **Milestone 3 (Game Loop)**: 1 complete level blockout, upgrade selection screen, victory condition, and sound/music implementation.
+Finalize `docs/GDD.md` and present the completion summary to the user.

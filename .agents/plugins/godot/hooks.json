@@ -1,0 +1,17 @@
+{
+  "gdscript-syntax-guard": {
+    "enabled": true,
+    "PostToolUse": [
+      {
+        "matcher": "write_to_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "which godot > /dev/null && godot --headless --check-only || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

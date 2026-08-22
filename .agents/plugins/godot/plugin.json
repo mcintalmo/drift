@@ -1,0 +1,22 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "godot-agent-plugin",
+  "version": "1.0.0",
+  "description": "Professional Godot Engine 4.7+ game development pack with live bridge MCP, ClassDB docs, Blender DCC pipeline, GDD authoring, and visual debugging skills.",
+  "author": {
+    "name": "mcintalmo"
+  },
+  "repository": "https://github.com/mcintalmo/godot-agent-plugin",
+  "keywords": [
+    "godot",
+    "godot-engine",
+    "game-development",
+    "gamedev",
+    "gdd",
+    "game-design",
+    "blender",
+    "gdscript",
+    "mcp",
+    "agent-skills"
+  ]
+}

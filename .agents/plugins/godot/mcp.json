@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "godot-engine": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/mcintalmo/godot-engine-mcp",
+        "godot-engine-mcp"
+      ],
+      "description": "Godot Engine live runtime bridge and headless CLI server with 68+ tools."
+    },
+    "godot-docs": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/mcintalmo/godot-docs-mcp",
+        "godot-docs-mcp"
+      ],
+      "description": "Official Godot Engine documentation and ClassDB metadata server."
+    },
+    "blender": {
+      "command": "uvx",
+      "args": [
+        "blender-mcp"
+      ],
+      "description": "Blender 3D DCC automation and automated GLTF export pipeline."
+    }
+  }
+}

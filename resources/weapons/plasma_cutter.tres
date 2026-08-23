@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/weapon_data.gd" id="1_wpn"]
+
+[resource]
+script = ExtResource("1_wpn")
+weapon_id = &"plasma_cutter"
+weapon_name = "High-Frequency Plasma Cutter"
+weapon_type = 0
+base_damage = 45.0
+damage_type = &"plasma"
+attack_cooldown_sec = 0.45
+vitality_stamina_cost = 12.0
+effective_range_meters = 2.2
+attack_arc_degrees = 120.0
+breach_multiplier = 3.0
+can_cut_train_couplers = true
+can_breach_security_locks = true

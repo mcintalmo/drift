@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="JetpackData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/jetpack_data.gd" id="1_jetpack"]
+
+[resource]
+script = ExtResource("1_jetpack")
+jetpack_id = &"standard_jetpack"
+jetpack_name = "Vector-Thruster Jetpack Harness"
+vertical_thrust_force = 24.0
+forward_boost_force = 12.0
+max_fuel_capacity = 100.0
+fuel_burn_rate_per_sec = 25.0
+fuel_recharge_rate_per_sec = 18.0
+hover_gravity_reduction = 0.2
+hover_horizontal_drag = 2.5

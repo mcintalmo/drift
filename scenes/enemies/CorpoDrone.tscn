@@ -1,0 +1,56 @@
+[gd_scene load_steps=8 format=3 uid="uid://c3m7x1v9k4p2"]
+
+[ext_resource type="Script" path="res://scripts/entities/enemies/corpo_drone.gd" id="1_drone"]
+[ext_resource type="Script" path="res://scripts/components/health_component.gd" id="2_health"]
+[ext_resource type="Script" path="res://scripts/components/hurtbox_component.gd" id="3_hurtbox"]
+[ext_resource type="Script" path="res://scripts/components/hitbox_component.gd" id="4_hitbox"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_drone"]
+radius = 0.6
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_corpo_drone"]
+albedo_color = Color(0.8, 0.75, 0.2, 1)
+metallic = 0.9
+roughness = 0.2
+
+[sub_resource type="SphereMesh" id="SphereMesh_drone"]
+material = SubResource("StandardMaterial3D_corpo_drone")
+radius = 0.6
+height = 1.2
+
+[node name="CorpoDrone" type="CharacterBody3D"]
+collision_layer = 1
+collision_mask = 7
+script = ExtResource("1_drone")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("SphereShape3D_drone")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_drone")
+
+[node name="HealthComponent" type="Node" parent="."]
+script = ExtResource("2_health")
+max_health = 50.0
+current_health = 50.0
+
+[node name="HurtboxComponent" type="Area3D" parent="." node_paths=PackedStringArray("health_component")]
+collision_layer = 16
+collision_mask = 8
+script = ExtResource("3_hurtbox")
+health_component = NodePath("../HealthComponent")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HurtboxComponent"]
+shape = SubResource("SphereShape3D_drone")
+
+[node name="HitboxComponent" type="Area3D" parent="."]
+collision_layer = 8
+collision_mask = 16
+script = ExtResource("4_hitbox")
+damage_amount = 15.0
+damage_type = &"kinetic"
+is_active = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HitboxComponent"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1.0)
+shape = SubResource("SphereShape3D_drone")

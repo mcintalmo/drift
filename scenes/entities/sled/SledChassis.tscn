@@ -1,0 +1,113 @@
+[gd_scene load_steps=18 format=3 uid="uid://c8n8s7l3e4d1"]
+
+[ext_resource type="Script" path="res://scripts/entities/sled/sled_chassis.gd" id="1_chassis"]
+[ext_resource type="Script" path="res://scripts/components/health_component.gd" id="2_health"]
+[ext_resource type="Script" path="res://scripts/components/thermal_receiver_component.gd" id="3_thermal"]
+[ext_resource type="Script" path="res://scripts/components/inertial_drift_component.gd" id="4_drift"]
+[ext_resource type="Script" path="res://scripts/components/center_of_mass_component.gd" id="5_com"]
+[ext_resource type="Script" path="res://scripts/components/sled_winch_component.gd" id="6_winch"]
+[ext_resource type="Script" path="res://scripts/state_machine/state_machine.gd" id="7_sm"]
+[ext_resource type="Script" path="res://scripts/state_machine/sled_states/sled_cruising_state.gd" id="8_cruise"]
+[ext_resource type="Script" path="res://scripts/state_machine/sled_states/sled_drifting_state.gd" id="9_drift_state"]
+[ext_resource type="Script" path="res://scripts/state_machine/sled_states/sled_airborne_state.gd" id="10_air"]
+[ext_resource type="Script" path="res://scripts/state_machine/sled_states/sled_tethered_state.gd" id="11_tether"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_chassis"]
+size = Vector3(1.6, 0.6, 2.4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hull"]
+albedo_color = Color(0.22, 0.28, 0.35, 1)
+metallic = 0.8
+roughness = 0.3
+
+[sub_resource type="BoxMesh" id="BoxMesh_hull"]
+material = SubResource("StandardMaterial3D_hull")
+size = Vector3(1.4, 0.4, 2.2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_runner"]
+albedo_color = Color(0.7, 0.75, 0.8, 1)
+metallic = 0.95
+roughness = 0.15
+
+[sub_resource type="BoxMesh" id="BoxMesh_runner"]
+material = SubResource("StandardMaterial3D_runner")
+size = Vector3(0.15, 0.1, 2.4)
+
+[node name="SledChassis" type="CharacterBody3D"]
+collision_layer = 2
+collision_mask = 5
+script = ExtResource("1_chassis")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+shape = SubResource("BoxShape3D_chassis")
+
+[node name="VisualModel" type="Node3D" parent="."]
+
+[node name="HullMesh" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+mesh = SubResource("BoxMesh_hull")
+
+[node name="LeftRunner" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.65, 0.05, 0)
+mesh = SubResource("BoxMesh_runner")
+
+[node name="RightRunner" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.65, 0.05, 0)
+mesh = SubResource("BoxMesh_runner")
+
+[node name="GroundRayCast3D" type="RayCast3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+target_position = Vector3(0, -0.8, 0)
+collision_mask = 1
+
+[node name="HealthComponent" type="Node" parent="."]
+script = ExtResource("2_health")
+max_health = 100.0
+current_health = 100.0
+
+[node name="ThermalReceiverComponent" type="Node" parent="."]
+script = ExtResource("3_thermal")
+max_thermal_shield = 100.0
+current_thermal_shield = 100.0
+
+[node name="InertialDriftComponent" type="Node" parent="." node_paths=PackedStringArray("target_body", "ground_raycast")]
+script = ExtResource("4_drift")
+target_body = NodePath("..")
+ground_raycast = NodePath("../GroundRayCast3D")
+
+[node name="CenterOfMassComponent" type="Node" parent="." node_paths=PackedStringArray("drift_component")]
+script = ExtResource("5_com")
+drift_component = NodePath("../InertialDriftComponent")
+
+[node name="SledWinchComponent" type="Node3D" parent="." node_paths=PackedStringArray("parent_body")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, -1.1)
+script = ExtResource("6_winch")
+parent_body = NodePath("..")
+
+[node name="StateMachine" type="Node" parent="." node_paths=PackedStringArray("initial_state")]
+script = ExtResource("7_sm")
+initial_state = NodePath("CruisingState")
+
+[node name="CruisingState" type="Node" parent="StateMachine" node_paths=PackedStringArray("sled_chassis", "drift_component", "winch_component")]
+script = ExtResource("8_cruise")
+sled_chassis = NodePath("../..")
+drift_component = NodePath("../../InertialDriftComponent")
+winch_component = NodePath("../../SledWinchComponent")
+
+[node name="DriftingState" type="Node" parent="StateMachine" node_paths=PackedStringArray("sled_chassis", "drift_component", "winch_component")]
+script = ExtResource("9_drift_state")
+sled_chassis = NodePath("../..")
+drift_component = NodePath("../../InertialDriftComponent")
+winch_component = NodePath("../../SledWinchComponent")
+
+[node name="AirborneState" type="Node" parent="StateMachine" node_paths=PackedStringArray("sled_chassis", "drift_component")]
+script = ExtResource("10_air")
+sled_chassis = NodePath("../..")
+drift_component = NodePath("../../InertialDriftComponent")
+
+[node name="TetheredState" type="Node" parent="StateMachine" node_paths=PackedStringArray("sled_chassis", "drift_component", "winch_component")]
+script = ExtResource("11_tether")
+sled_chassis = NodePath("../..")
+drift_component = NodePath("../../InertialDriftComponent")
+winch_component = NodePath("../../SledWinchComponent")

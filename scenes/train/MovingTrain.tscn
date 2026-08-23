@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 uid="uid://b2v8m4x1c7k9"]
+
+[ext_resource type="Script" path="res://scripts/entities/world/moving_train.gd" id="1_train"]
+[ext_resource type="PackedScene" path="res://scenes/train/TrainCar.tscn" id="2_car"]
+
+[node name="MovingTrain" type="Node3D" node_paths=PackedStringArray("train_cars")]
+script = ExtResource("1_train")
+train_cars = [NodePath("LocomotiveCar"), NodePath("CargoCar1"), NodePath("CargoCar2")]
+
+[node name="LocomotiveCar" parent="." instance=ExtResource("2_car")]
+
+[node name="CargoCar1" parent="." instance=ExtResource("2_car")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 11)
+
+[node name="CargoCar2" parent="." instance=ExtResource("2_car")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 22)

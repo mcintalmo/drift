@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="HeaterData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/heater_data.gd" id="1_heater"]
+
+[resource]
+script = ExtResource("1_heater")
+heater_id = &"basic_hearth_core"
+heater_name = "Basic Thermite Hearth"
+shield_capacity = 100.0
+radiation_radius_meters = 6.0
+shield_recharge_rate_per_sec = 8.0
+fuel_consumption_per_sec = 0.25
+cold_drain_mitigation_factor = 1.0

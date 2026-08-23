@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EngineData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/engine_data.gd" id="1_engine"]
+
+[resource]
+script = ExtResource("1_engine")
+engine_id = &"standard_engine"
+engine_name = "Standard Kerosene Thruster"
+max_forward_thrust = 38.0
+max_reverse_thrust = 14.0
+boost_multiplier = 1.65
+top_speed_ms = 32.0
+fuel_burn_rate_per_sec = 0.8
+boost_fuel_multiplier = 2.5
+smog_emission_rate = 1.0

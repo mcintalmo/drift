@@ -1,0 +1,111 @@
+[gd_scene load_steps=18 format=3 uid="uid://e4n7m2lav1w3"]
+
+[ext_resource type="PackedScene" path="res://scenes/entities/sled/SledChassis.tscn" id="1_sled"]
+[ext_resource type="PackedScene" path="res://scenes/entities/pilot/Pilot.tscn" id="2_pilot"]
+[ext_resource type="PackedScene" path="res://scenes/train/MovingTrain.tscn" id="3_train"]
+[ext_resource type="PackedScene" path="res://scenes/containers/GroundCrate.tscn" id="4_crate"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/CorpoDrone.tscn" id="5_drone"]
+[ext_resource type="PackedScene" path="res://scenes/camera/IsometricCameraRig.tscn" id="6_cam"]
+[ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="7_hud"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_heist"]
+sky_top_color = Color(0.15, 0.35, 0.6, 1)
+sky_horizon_color = Color(0.65, 0.75, 0.85, 1)
+ground_bottom_color = Color(0.55, 0.65, 0.75, 1)
+ground_horizon_color = Color(0.65, 0.75, 0.85, 1)
+
+[sub_resource type="Sky" id="Sky_heist"]
+sky_material = SubResource("ProceduralSkyMaterial_heist")
+
+[sub_resource type="Environment" id="Environment_heist"]
+background_mode = 2
+sky = SubResource("Sky_heist")
+ambient_light_source = 3
+ambient_light_color = Color(0.7, 0.8, 0.9, 1)
+tonemap_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_snow_track"]
+albedo_color = Color(0.88, 0.92, 0.96, 1)
+roughness = 0.85
+
+[sub_resource type="BoxMesh" id="BoxMesh_snow_track"]
+material = SubResource("StandardMaterial3D_snow_track")
+size = Vector3(200, 1, 400)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_snow_track"]
+size = Vector3(200, 1, 400)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rail_steel"]
+albedo_color = Color(0.3, 0.32, 0.35, 1)
+metallic = 0.9
+roughness = 0.3
+
+[sub_resource type="BoxMesh" id="BoxMesh_rail"]
+material = SubResource("StandardMaterial3D_rail_steel")
+size = Vector3(0.15, 0.2, 400)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tie_wood"]
+albedo_color = Color(0.2, 0.15, 0.12, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="BoxMesh_tie_bed"]
+material = SubResource("StandardMaterial3D_tie_wood")
+size = Vector3(4.0, 0.08, 400)
+
+[node name="TrainHeistProvingGrounds" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_heist")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 35, 0)
+shadow_enabled = true
+
+[node name="Terrain" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+metadata/surface_type = &"pack"
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Terrain"]
+mesh = SubResource("BoxMesh_snow_track")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Terrain"]
+shape = SubResource("BoxShape3D_snow_track")
+
+[node name="RailroadTrack" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.05, 0)
+
+[node name="TieBed" type="MeshInstance3D" parent="RailroadTrack"]
+mesh = SubResource("BoxMesh_tie_bed")
+
+[node name="LeftRail" type="MeshInstance3D" parent="RailroadTrack"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.2, 0.1, 0)
+mesh = SubResource("BoxMesh_rail")
+
+[node name="RightRail" type="MeshInstance3D" parent="RailroadTrack"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.2, 0.1, 0)
+mesh = SubResource("BoxMesh_rail")
+
+[node name="MovingTrain" parent="." instance=ExtResource("3_train")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.1, 15)
+cruise_speed_ms = 10.0
+
+[node name="CorpoDrone" parent="." instance=ExtResource("5_drone")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 4.5, 5)
+
+[node name="GroundCrate1" parent="." instance=ExtResource("4_crate")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 0, 4)
+
+[node name="GroundCrate2" parent="." instance=ExtResource("4_crate")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.0, 0, -8)
+
+[node name="SledChassis" parent="." groups=["player_sled"] instance=ExtResource("1_sled")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0.5, 0)
+is_occupied = false
+
+[node name="Pilot" parent="." groups=["player_pilot"] instance=ExtResource("2_pilot")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+
+[node name="IsometricCameraRig" parent="." node_paths=PackedStringArray("target_node") instance=ExtResource("6_cam")]
+target_node = NodePath("../Pilot")
+
+[node name="HUD" parent="." instance=ExtResource("7_hud")]

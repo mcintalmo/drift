@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/weapon_data.gd" id="1_wpn"]
+
+[resource]
+script = ExtResource("1_wpn")
+weapon_id = &"hand_blaster"
+weapon_name = "Reclaimed Kinetic Hand Blaster"
+weapon_type = 1
+base_damage = 22.0
+damage_type = &"kinetic"
+attack_cooldown_sec = 0.2
+vitality_stamina_cost = 6.0
+effective_range_meters = 25.0
+attack_arc_degrees = 15.0
+breach_multiplier = 1.0
+can_cut_train_couplers = false
+can_breach_security_locks = false

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="WinchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/winch_data.gd" id="1_winch"]
+
+[resource]
+script = ExtResource("1_winch")
+winch_id = &"standard_winch"
+winch_name = "Heavy Magnetic Harpoon Winch"
+max_cable_length_meters = 38.0
+spring_constant_k = 140.0
+damping_coefficient_c = 9.0
+tensile_limit_force = 650.0
+reel_in_speed_ms = 18.0
+quick_cone_angle_degrees = 45.0
+max_lock_range_meters = 42.0

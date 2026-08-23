@@ -15,6 +15,7 @@ enum ContainerType {
 var crate_inventory: HexInventoryComponent = null
 var backpack_inventory: HexInventoryComponent = null
 var sled_inventory: HexInventoryComponent = null
+var sled_com_component: CenterOfMassComponent = null
 
 var left_container_type: ContainerType = ContainerType.GROUND_CRATE
 var right_container_type: ContainerType = ContainerType.SLED_CARGO_POD
@@ -161,12 +162,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			open_contextual_inventory()
 	
 	elif is_open:
-		# Rotation via [R] or Lean Right [E]
 		if event.is_action_pressed(&"pilot_lean_right") or (event is InputEventKey and event.pressed and event.physical_keycode == KEY_R):
 			if held_item:
 				_rotate_held_item()
 		
-		# Bumper Panel Switch [Q / E / Tab]
 		elif event.is_action_pressed(&"pilot_lean_left") or (event is InputEventKey and event.pressed and event.physical_keycode == KEY_TAB):
 			active_focus_panel = 1 - active_focus_panel
 			_update_panel_focus()
@@ -178,10 +177,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func open_contextual_inventory() -> void:
 	_discover_scene_inventories()
 	
-	# Determine smart default panels with mutual exclusion
 	if crate_inventory:
 		left_container_type = ContainerType.GROUND_CRATE
-		right_container_type = ContainerType.PILOT_BACKPACK if backpack_inventory else ContainerType.SLED_CARGO_POD
+		right_container_type = ContainerType.SLED_CARGO_POD if sled_inventory else ContainerType.PILOT_BACKPACK
 	else:
 		left_container_type = ContainerType.PILOT_BACKPACK
 		right_container_type = ContainerType.SLED_CARGO_POD
@@ -210,6 +208,7 @@ func _discover_scene_inventories() -> void:
 	crate_inventory = null
 	backpack_inventory = null
 	sled_inventory = null
+	sled_com_component = null
 	
 	if pilot:
 		backpack_inventory = pilot.get_node_or_null("BackpackInventoryComponent") as HexInventoryComponent
@@ -223,12 +222,12 @@ func _discover_scene_inventories() -> void:
 	
 	var sled_nodes: Array[Node] = get_tree().get_nodes_in_group(&"player_sled")
 	if not sled_nodes.is_empty() and is_instance_valid(sled_nodes[0]):
-		sled_inventory = sled_nodes[0].get_node_or_null("CenterOfMassComponent/CargoPodInventory") as HexInventoryComponent
+		sled_com_component = sled_nodes[0].get_node_or_null("CenterOfMassComponent") as CenterOfMassComponent
+		if sled_com_component:
+			sled_inventory = sled_com_component.get_node_or_null("CargoPodInventory") as HexInventoryComponent
 
-## Mutual exclusion setter for Left container
 func _set_left_container(type: ContainerType) -> void:
 	left_container_type = type
-	# If right panel currently has the same type, auto-shift right panel to an available alternate
 	if right_container_type == left_container_type:
 		for alt: int in [ContainerType.SLED_CARGO_POD, ContainerType.PILOT_BACKPACK, ContainerType.GROUND_CRATE]:
 			if alt != int(left_container_type):
@@ -236,10 +235,8 @@ func _set_left_container(type: ContainerType) -> void:
 				break
 	_refresh_container_panels()
 
-## Mutual exclusion setter for Right container
 func _set_right_container(type: ContainerType) -> void:
 	right_container_type = type
-	# If left panel currently has the same type, auto-shift left panel to an available alternate
 	if left_container_type == right_container_type:
 		for alt: int in [ContainerType.GROUND_CRATE, ContainerType.PILOT_BACKPACK, ContainerType.SLED_CARGO_POD]:
 			if alt != int(right_container_type):
@@ -258,16 +255,23 @@ func _refresh_container_panels() -> void:
 	right_grid_control.set_inventory(right_inv)
 	_update_load_label(right_load_label, right_inv, right_container_type)
 	
-	# 3. Update tab visual states & mutual exclusion visibility/disabled state
+	# 3. Update tab buttons
 	_update_tab_buttons()
+	
+	# 4. Explicitly update Sled COM visualizer
+	if sled_com_component and is_instance_valid(sled_com_component):
+		sled_com_component.recalculate_com()
+		if com_widget:
+			com_widget.update_com_data(
+				sled_com_component.current_total_mass_kg,
+				Vector2(sled_com_component.current_com_offset_3d.x, sled_com_component.current_com_offset_3d.z)
+			)
 
 func _update_tab_buttons() -> void:
-	# Left tab styling
 	_apply_tab_style(left_crate_tab, left_container_type == ContainerType.GROUND_CRATE, crate_inventory != null and right_container_type != ContainerType.GROUND_CRATE)
 	_apply_tab_style(left_backpack_tab, left_container_type == ContainerType.PILOT_BACKPACK, backpack_inventory != null and right_container_type != ContainerType.PILOT_BACKPACK)
 	_apply_tab_style(left_sled_tab, left_container_type == ContainerType.SLED_CARGO_POD, sled_inventory != null and right_container_type != ContainerType.SLED_CARGO_POD)
 	
-	# Right tab styling
 	_apply_tab_style(right_crate_tab, right_container_type == ContainerType.GROUND_CRATE, crate_inventory != null and left_container_type != ContainerType.GROUND_CRATE)
 	_apply_tab_style(right_backpack_tab, right_container_type == ContainerType.PILOT_BACKPACK, backpack_inventory != null and left_container_type != ContainerType.PILOT_BACKPACK)
 	_apply_tab_style(right_sled_tab, right_container_type == ContainerType.SLED_CARGO_POD, sled_inventory != null and left_container_type != ContainerType.SLED_CARGO_POD)

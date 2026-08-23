@@ -16,18 +16,32 @@ var current_com_offset_3d: Vector3 = Vector3.ZERO
 func _ready() -> void:
 	if not sled_stats:
 		sled_stats = SledStatsData.new()
+	
+	# Connect existing exported containers
+	for container: HexInventoryComponent in container_inventories:
+		if is_instance_valid(container):
+			if not container.inventory_changed.is_connected(_on_container_inventory_changed):
+				container.inventory_changed.connect(_on_container_inventory_changed)
+	
 	recalculate_com()
 
 func register_container(container: HexInventoryComponent) -> void:
-	if container and not container in container_inventories:
-		container_inventories.append(container)
-		container.inventory_changed.connect(func(_items: Array[HexItemData]) -> void: recalculate_com())
+	if container:
+		if not container in container_inventories:
+			container_inventories.append(container)
+		if not container.inventory_changed.is_connected(_on_container_inventory_changed):
+			container.inventory_changed.connect(_on_container_inventory_changed)
 		recalculate_com()
 
 func unregister_container(container: HexInventoryComponent) -> void:
 	if container in container_inventories:
+		if container.inventory_changed.is_connected(_on_container_inventory_changed):
+			container.inventory_changed.disconnect(_on_container_inventory_changed)
 		container_inventories.erase(container)
 		recalculate_com()
+
+func _on_container_inventory_changed(_items: Array[HexItemData]) -> void:
+	recalculate_com()
 
 ## Recalculates total mass and composite 3D Center of Mass offset
 func recalculate_com() -> void:

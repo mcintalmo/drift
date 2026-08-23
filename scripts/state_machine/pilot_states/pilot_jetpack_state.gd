@@ -46,18 +46,22 @@ func physics_update(delta: float) -> void:
 	pilot.velocity.y += (jet_accel.y * lift_mass_scaling * delta) - (9.81 * 0.2 * delta)
 	pilot.velocity.y = clampf(pilot.velocity.y, -12.0, 15.0)
 	
-	# Airborne imbalance drift (jetpack thrust arcs toward the heavy side)
+	# Character's local body vectors for airborne torque
+	var char_forward: Vector3 = -pilot.global_transform.basis.z.normalized()
+	var char_right: Vector3 = pilot.global_transform.basis.x.normalized()
+	
+	# Airborne imbalance drift (jetpack thrust arcs toward the character's heavy shoulder/side)
 	var airborne_imbalance_drift: Vector3 = Vector3.ZERO
 	if backpack_mass > 15.0 and com_offset.length() > 0.01:
 		var drift_force: float = (backpack_mass / 40.0) * 3.8
-		airborne_imbalance_drift = (cam_right * (com_offset.x / 0.20) * drift_force) - (cam_forward * (com_offset.y / 0.20) * drift_force * 0.7)
+		airborne_imbalance_drift = (char_right * (com_offset.x / 0.20) * drift_force) - (char_forward * (com_offset.y / 0.20) * drift_force * 0.7)
 	
 	if heading_dir.length() > 0.1:
 		pilot.rotation.y = lerp_angle(pilot.rotation.y, atan2(-heading_dir.x, -heading_dir.z), 8.0 * delta)
 		pilot.velocity.x += jet_accel.x * delta
 		pilot.velocity.z += jet_accel.z * delta
 	
-	# Apply airborne imbalance force
+	# Apply airborne imbalance force in body space
 	pilot.velocity.x += airborne_imbalance_drift.x * delta
 	pilot.velocity.z += airborne_imbalance_drift.z * delta
 	

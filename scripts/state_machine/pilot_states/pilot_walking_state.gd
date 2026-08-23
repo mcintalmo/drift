@@ -47,33 +47,37 @@ func physics_update(delta: float) -> void:
 	
 	var input_dir: Vector2 = Input.get_vector(&"steer_left", &"steer_right", &"brake_reverse", &"accelerate")
 	
-	var cam: Camera3D = pilot.get_viewport().get_camera_3d() if (pilot.is_inside_tree() and pilot.get_viewport()) else null
-	var cam_forward: Vector3 = -cam.global_transform.basis.z if (cam and cam.is_inside_tree()) else Vector3(0, 0, -1)
-	cam_forward.y = 0.0
-	cam_forward = cam_forward.normalized()
-	var cam_right: Vector3 = cam.global_transform.basis.x if (cam and cam.is_inside_tree()) else Vector3(1, 0, 0)
-	cam_right.y = 0.0
-	cam_right = cam_right.normalized()
-	
 	if input_dir.length() > 0.05:
-		var input_move: Vector3 = (cam_right * input_dir.x) + (cam_forward * input_dir.y)
-		input_move = input_move.normalized()
+		var cam: Camera3D = pilot.get_viewport().get_camera_3d() if (pilot.is_inside_tree() and pilot.get_viewport()) else null
+		var cam_forward: Vector3 = -cam.global_transform.basis.z if (cam and cam.is_inside_tree()) else Vector3(0, 0, -1)
+		cam_forward.y = 0.0
+		cam_forward = cam_forward.normalized()
+		var cam_right: Vector3 = cam.global_transform.basis.x if (cam and cam.is_inside_tree()) else Vector3(1, 0, 0)
+		cam_right.y = 0.0
+		cam_right = cam_right.normalized()
 		
-		# 2. Imbalance walking veer (only active while moving)
+		var intended_move_dir: Vector3 = ((cam_right * input_dir.x) + (cam_forward * input_dir.y)).normalized()
+		
+		# Compute character's local body vectors based on active movement direction
+		# intended_move_dir is character's forward; perpendicular is character's right shoulder
+		var char_right: Vector3 = Vector3(-intended_move_dir.z, 0.0, intended_move_dir.x).normalized()
+		var char_forward: Vector3 = intended_move_dir
+		
+		# 2. Imbalance walking veer based on character's actual body orientation
 		var pull_strength: float = clampf((backpack_mass / 70.0) * 0.35, 0.0, 0.45)
-		var imbalance_pull: Vector3 = (cam_right * (com_offset.x / 0.20) * pull_strength) - (cam_forward * (com_offset.y / 0.20) * pull_strength * 0.5)
+		var body_imbalance_pull: Vector3 = (char_right * (com_offset.x / 0.20) * pull_strength) - (char_forward * (com_offset.y / 0.20) * pull_strength * 0.5)
 		
-		var move_vec: Vector3 = (input_move + imbalance_pull).normalized()
+		var actual_move_vec: Vector3 = (intended_move_dir + body_imbalance_pull).normalized()
 		
-		pilot.rotation.y = lerp_angle(pilot.rotation.y, atan2(-move_vec.x, -move_vec.z), 14.0 * delta)
-		pilot.velocity.x = move_vec.x * move_speed
-		pilot.velocity.z = move_vec.z * move_speed
+		pilot.rotation.y = lerp_angle(pilot.rotation.y, atan2(-actual_move_vec.x, -actual_move_vec.z), 14.0 * delta)
+		pilot.velocity.x = actual_move_vec.x * move_speed
+		pilot.velocity.z = actual_move_vec.z * move_speed
 	else:
 		# Stationary: zero velocity, completely still
 		pilot.velocity.x = move_toward(pilot.velocity.x, 0.0, 30.0 * delta)
 		pilot.velocity.z = move_toward(pilot.velocity.z, 0.0, 30.0 * delta)
 	
-	# 3. Procedural Torso Lean from Backpack Imbalance
+	# 3. Procedural Torso Lean from Backpack Imbalance (Local Model Space)
 	var visual_model: Node3D = pilot.get_node_or_null("VisualModel") as Node3D
 	if visual_model:
 		var target_lean_z: float = -(com_offset.x / 0.20) * deg_to_rad(14.0) * clampf(backpack_mass / 30.0, 0.0, 1.5)

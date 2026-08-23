@@ -24,15 +24,40 @@ var source_slot_for_drag: Vector2i = Vector2i(-999, -999)
 @onready var tooltip_name: Label = $RootControl/PanelContainer/MarginContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer/ItemNameLabel
 @onready var tooltip_mass: Label = $RootControl/PanelContainer/MarginContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer/ItemMassLabel
 @onready var tooltip_desc: Label = $RootControl/PanelContainer/MarginContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer/ItemDescLabel
+@onready var floating_cursor_ghost: Control = $RootControl/FloatingCursorGhost
 
 func _ready() -> void:
 	root_control.visible = is_open
 	_setup_grid_listeners(left_grid_control)
 	_setup_grid_listeners(right_grid_control)
+	if floating_cursor_ghost:
+		floating_cursor_ghost.draw.connect(_on_draw_floating_ghost)
+
+func _process(_delta: float) -> void:
+	if is_open and held_item and floating_cursor_ghost:
+		floating_cursor_ghost.position = root_control.get_local_mouse_position()
+		floating_cursor_ghost.queue_redraw()
+
+func _on_draw_floating_ghost() -> void:
+	if not held_item or not floating_cursor_ghost:
+		return
+	var color: Color = held_item.item_color if held_item.item_color != Color.TRANSPARENT else Color(0.85, 0.55, 0.2, 0.85)
+	color.a = 0.75
+	var rotated_pts: Array[Vector2i] = held_item.get_rotated_footprint(held_rotation_step)
+	var radius: float = left_grid_control.cell_radius if left_grid_control else 24.0
+	
+	for offset_pt: Vector2i in rotated_pts:
+		var center: Vector2 = left_grid_control.hex_to_pixel(offset_pt)
+		var poly: PackedVector2Array = left_grid_control.get_hex_polygon(center, radius * 0.85)
+		floating_cursor_ghost.draw_colored_polygon(poly, color)
+		floating_cursor_ghost.draw_polyline(poly, Color(1, 1, 1, 0.8), 1.5, true)
 
 func _setup_grid_listeners(grid: HexGridControl) -> void:
-	grid.item_picked.connect(func(item: HexItemData, slot: Vector2i) -> void:
-		_start_dragging(item, grid.grid_inventory, slot)
+	grid.item_picked.connect(func(item: HexItemData, slot: Vector2i, is_quick_transfer: bool) -> void:
+		if is_quick_transfer:
+			_quick_transfer_item(item, grid.grid_inventory)
+		else:
+			_start_dragging(item, grid.grid_inventory, slot)
 	)
 	grid.cell_clicked.connect(func(cell: Vector2i, button: int) -> void:
 		if button == MOUSE_BUTTON_LEFT and held_item:
@@ -78,7 +103,6 @@ func open_contextual_inventory() -> void:
 		# Check nearby crates
 		var crates: Array[Node] = get_tree().get_nodes_in_group(&"loot_crates")
 		if crates.is_empty():
-			# Try finding GroundCrate nodes directly
 			var all_crates: Array[Node] = get_tree().root.find_children("*Crate*", "GroundCrate", true, false)
 			for c: Node in all_crates:
 				if c is Node3D and is_instance_valid(c):
@@ -132,7 +156,6 @@ func _rotate_held_item() -> void:
 	if not held_item:
 		return
 	held_rotation_step = (held_rotation_step + 1) % 6
-	# Update active grid previews
 	if left_grid_control.is_mouse_inside and left_grid_control.grid_inventory:
 		var is_valid: bool = left_grid_control.grid_inventory.can_place_item(held_item, left_grid_control.hovered_cell, held_rotation_step)
 		left_grid_control.set_custom_drag_preview(held_item, held_rotation_step, left_grid_control.hovered_cell, is_valid)
@@ -154,6 +177,25 @@ func _try_drop_item(grid: HexGridControl, cell: Vector2i) -> void:
 		# Invalid drop target
 		pass
 
+func _quick_transfer_item(item: HexItemData, source_inv: HexInventoryComponent) -> void:
+	var destination: HexInventoryComponent = null
+	if source_inv == source_container:
+		destination = target_container
+	else:
+		destination = source_container
+	
+	if not destination:
+		return
+	
+	# Search all available slots across all 6 rotations for the first valid fit
+	for slot: Vector2i in destination.available_slots:
+		for rot: int in range(6):
+			if destination.can_place_item(item, slot, rot):
+				source_inv.remove_item(item)
+				destination.place_item(item, slot, rot)
+				_update_tooltip(null)
+				return
+
 func _cancel_drag() -> void:
 	if held_item and source_inv_for_drag:
 		source_inv_for_drag.place_item(held_item, source_slot_for_drag, held_item.rotation_step)
@@ -167,8 +209,8 @@ func _update_tooltip(item: HexItemData) -> void:
 	if item:
 		tooltip_name.text = item.item_name
 		tooltip_mass.text = "Mass: %.1f kg" % item.mass_kg
-		tooltip_desc.text = "Hex Footprint: %d cells\nCategory: %s" % [item.hex_footprint.size(), item.item_id]
+		tooltip_desc.text = "Hex Footprint: %d cells\n[Shift+LMB] Quick Transfer\n[R] / [RMB] to rotate." % item.hex_footprint.size()
 	else:
 		tooltip_name.text = "NO SELECTION"
 		tooltip_mass.text = "Mass: --"
-		tooltip_desc.text = "Click an item to drag.\nPress [R] / [RMB] to rotate 60°."
+		tooltip_desc.text = "Click to drag. [Shift+LMB] Quick Transfer.\n[R] / [RMB] to rotate 60°."

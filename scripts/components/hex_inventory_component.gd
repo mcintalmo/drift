@@ -4,6 +4,7 @@ extends Node
 signal inventory_changed(items: Array[HexItemData])
 signal item_added(item: HexItemData, root_coord: Vector2i)
 signal item_removed(item: HexItemData)
+signal item_placed(item: HexItemData, root_coord: Vector2i)
 
 @export var container_mount: ContainerMountData
 @export var hex_cell_size_m: float = 0.25
@@ -13,6 +14,19 @@ var _grid_slots: Dictionary = {}
 var _placed_items: Array[HexItemData] = []
 var _item_root_coords: Dictionary = {} # HexItemData -> Vector2i
 
+var available_slots: Array[Vector2i]:
+	get:
+		if container_mount:
+			return container_mount.slot_layout.duplicate()
+		return []
+
+var placed_items: Dictionary:
+	get:
+		var map: Dictionary = {}
+		for item: HexItemData in _placed_items:
+			map[item.item_id] = item
+		return map
+
 const SQRT_3: float = 1.7320508
 
 func _ready() -> void:
@@ -21,8 +35,10 @@ func _ready() -> void:
 
 ## Checks if an item can be placed at a root axial coordinate with a given rotation
 func can_place_item(item: HexItemData, root_coord: Vector2i, rotation_step: int = 0) -> bool:
-	if not item or not container_mount:
+	if not item:
 		return false
+	if not container_mount:
+		container_mount = ContainerMountData.new()
 	
 	# Check weight capacity
 	var prospective_mass: float = get_total_items_mass() + item.mass_kg
@@ -51,10 +67,13 @@ func place_item(item: HexItemData, root_coord: Vector2i, rotation_step: int = 0)
 		var target_coord: Vector2i = root_coord + offset
 		_grid_slots[target_coord] = item
 	
+	item.root_slot = root_coord
+	item.rotation_step = rotation_step
 	_placed_items.append(item)
 	_item_root_coords[item] = root_coord
 	
 	item_added.emit(item, root_coord)
+	item_placed.emit(item, root_coord)
 	inventory_changed.emit(_placed_items)
 	return true
 
@@ -78,6 +97,16 @@ func remove_item(item: HexItemData) -> bool:
 	item_removed.emit(item)
 	inventory_changed.emit(_placed_items)
 	return true
+
+func get_item_at(coord: Vector2i) -> HexItemData:
+	return _grid_slots.get(coord, null)
+
+func get_item_occupied_slots(item: HexItemData) -> Array[Vector2i]:
+	var slots: Array[Vector2i] = []
+	for coord: Vector2i in _grid_slots:
+		if _grid_slots[coord] == item:
+			slots.append(coord)
+	return slots
 
 ## Returns the sum of all stored items' mass in kg
 func get_total_items_mass() -> float:

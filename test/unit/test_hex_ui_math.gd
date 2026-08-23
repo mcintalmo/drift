@@ -3,12 +3,15 @@ extends RefCounted
 
 const HexGridControl = preload("res://scripts/ui/hex_grid_control.gd")
 const HexItemData = preload("res://scripts/resources/hex_item_data.gd")
+const HexInventoryComponent = preload("res://scripts/components/hex_inventory_component.gd")
+const ContainerMountData = preload("res://scripts/resources/container_mount_data.gd")
 
 func run_tests() -> Array[Dictionary]:
 	var results: Array[Dictionary] = []
 	results.append(_test_axial_to_pixel_roundtrip())
 	results.append(_test_six_step_rotation_closure())
 	results.append(_test_hex_polygon_vertices_count())
+	results.append(_test_quick_transfer_search())
 	return results
 
 func _test_axial_to_pixel_roundtrip() -> Dictionary:
@@ -42,7 +45,8 @@ func _test_axial_to_pixel_roundtrip() -> Dictionary:
 func _test_six_step_rotation_closure() -> Dictionary:
 	var item: HexItemData = HexItemData.new()
 	# Asymmetric L-shape footprint
-	item.hex_footprint = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1)]
+	var footprint: Array[Vector2i] = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(1, 1)]
+	item.hex_footprint = footprint
 	
 	var initial_footprint: Array[Vector2i] = item.get_rotated_footprint(0)
 	var rotated_6_times: Array[Vector2i] = item.get_rotated_footprint(6)
@@ -73,4 +77,46 @@ func _test_hex_polygon_vertices_count() -> Dictionary:
 		"name": "test_hex_polygon_vertices_count",
 		"passed": passed,
 		"message": "Generated hexagon has exactly 6 vertices equidistant (20.0 px) from center"
+	}
+
+func _test_quick_transfer_search() -> Dictionary:
+	var source_inv: HexInventoryComponent = HexInventoryComponent.new()
+	var src_mount: ContainerMountData = ContainerMountData.new()
+	src_mount.slot_layout = [Vector2i(0, 0), Vector2i(1, 0)]
+	source_inv.container_mount = src_mount
+	
+	var target_inv: HexInventoryComponent = HexInventoryComponent.new()
+	var tgt_mount: ContainerMountData = ContainerMountData.new()
+	tgt_mount.slot_layout = [Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 0)]
+	target_inv.container_mount = tgt_mount
+	
+	var item: HexItemData = HexItemData.new()
+	item.item_id = &"test_bar"
+	item.mass_kg = 10.0
+	var item_footprint: Array[Vector2i] = [Vector2i(0, 0), Vector2i(0, 1)]
+	item.hex_footprint = item_footprint
+	
+	source_inv.place_item(item, Vector2i(0, 0))
+	
+	# Simulate quick transfer search
+	var transferred: bool = false
+	for slot: Vector2i in target_inv.available_slots:
+		for rot: int in range(6):
+			if target_inv.can_place_item(item, slot, rot):
+				source_inv.remove_item(item)
+				target_inv.place_item(item, slot, rot)
+				transferred = true
+				break
+		if transferred:
+			break
+	
+	var passed: bool = transferred and target_inv.placed_items.has(&"test_bar") and not source_inv.placed_items.has(&"test_bar")
+	
+	source_inv.free()
+	target_inv.free()
+	
+	return {
+		"name": "test_quick_transfer_search",
+		"passed": passed,
+		"message": "Quick transfer algorithm placed item into target container across 6-rotation search"
 	}

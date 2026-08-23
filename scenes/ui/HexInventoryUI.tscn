@@ -145,3 +145,10 @@ horizontal_alignment = 1
 layout_mode = 2
 size_flags_vertical = 3
 script = ExtResource("2_grid")
+
+[node name="FloatingCursorGhost" type="Control" parent="RootControl"]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+mouse_filter = 2

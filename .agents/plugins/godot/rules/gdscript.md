@@ -124,3 +124,16 @@ func filter_living_enemies(enemies: Array[Enemy]) -> Array[Enemy]:
 
 - **`Node` subclasses** (Node, Node2D, Node3D, Control): Managed manually by the scene tree. Use `queue_free()` to safely delete nodes at the end of the current frame. Never call `free()` directly on nodes during active physics/draw processing.
 - **`RefCounted` subclasses** (Resource, Custom Resources, Data Objects): Automatically garbage-collected when all references go out of scope. Do not call `queue_free()` on `RefCounted` objects.
+
+## Code Formatting and Linting
+
+All GDScript code must adhere to official formatting standards:
+
+- **Auto-Formatting Hook**: The plugin's `hooks.json` automatically runs `gdformat` via `uvx gdtoolkit` on file save.
+- **On-Demand Formatting**: Format any script or directory using the `godot_format_script` MCP tool or CLI:
+
+  ```bash
+  uvx --from git+https://github.com/mcintalmo/godot-engine-mcp godot-engine-mcp format res://scripts/
+  ```
+
+- **Godot Editor Addon**: For in-editor auto-formatting on `Ctrl+S` / `Cmd+S`, install the GDQuest GDScript Formatter plugin (`addons/gdscript_formatter`).

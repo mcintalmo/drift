@@ -7,6 +7,7 @@ const TestSledWinch = preload("res://test/unit/test_sled_winch.gd")
 const TestPilotLocomotion = preload("res://test/unit/test_pilot_locomotion.gd")
 const TestCombatBreach = preload("res://test/unit/test_combat_breach.gd")
 const TestTrainDecoupling = preload("res://test/unit/test_train_decoupling.gd")
+const TestHexUIMath = preload("res://test/unit/test_hex_ui_math.gd")
 
 func _init() -> void:
 	print("==================================================")
@@ -24,7 +25,8 @@ func _init() -> void:
 		{"name": "Sled Heavy Winch & Spring Mechanics", "instance": TestSledWinch.new()},
 		{"name": "Pilot Locomotion & Jetpack Mobility", "instance": TestPilotLocomotion.new()},
 		{"name": "Combat Damage & Plasma Breaching", "instance": TestCombatBreach.new()},
-		{"name": "Train Car Decoupling & Rail Dynamics", "instance": TestTrainDecoupling.new()}
+		{"name": "Train Car Decoupling & Rail Dynamics", "instance": TestTrainDecoupling.new()},
+		{"name": "Hexagonal 2D UI Math & Axial Symmetry", "instance": TestHexUIMath.new()}
 	]
 	
 	for suite: Dictionary in test_suites:
@@ -46,7 +48,7 @@ func _init() -> void:
 	print("==================================================")
 	
 	if failed_tests == 0:
-		print("All Milestone 1 & Milestone 2 unit tests passed successfully.")
+		print("All Drift unit tests passed successfully.")
 		quit(0)
 	else:
 		print("Test failures detected.")

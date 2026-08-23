@@ -24,14 +24,16 @@ enum ItemCategory {
 @export_group("Spatial Hex Footprint")
 ## Axial coordinate offsets Vector2i(q, r) that this item occupies relative to its anchor point (0, 0)
 @export var hex_footprint: Array[Vector2i] = [Vector2i(0, 0)]
+@export var rotation_step: int = 0
+@export var root_slot: Vector2i = Vector2i.ZERO
 
 @export_group("Visuals")
-@export var color_tint: Color = Color(0.7, 0.7, 0.8, 1.0)
+@export var item_color: Color = Color(0.7, 0.7, 0.8, 1.0)
 @export var icon_path: String = ""
 
 ## Returns the rotated hex footprint around (0, 0) in 60-degree increments (0 to 5)
 func get_rotated_footprint(rotation_steps: int) -> Array[Vector2i]:
-	var steps: int = rotation_steps % 6
+	var steps: int = ((rotation_steps % 6) + 6) % 6
 	if steps == 0:
 		return hex_footprint.duplicate()
 	

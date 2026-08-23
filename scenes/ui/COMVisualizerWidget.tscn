@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://d3m7v1lax2p5"]
+
+[ext_resource type="Script" path="res://scripts/ui/com_visualizer_widget.gd" id="1_com"]
+
+[node name="COMVisualizerWidget" type="Control"]
+custom_minimum_size = Vector2(160, 160)
+layout_mode = 3
+anchors_preset = 0
+offset_right = 160.0
+offset_bottom = 160.0
+script = ExtResource("1_com")

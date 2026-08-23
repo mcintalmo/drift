@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://scenes/enemies/CorpoDrone.tscn" id="5_drone"]
 [ext_resource type="PackedScene" path="res://scenes/camera/IsometricCameraRig.tscn" id="6_cam"]
 [ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="7_hud"]
+[ext_resource type="PackedScene" path="res://scenes/ui/HexInventoryUI.tscn" id="8_inv_ui"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_heist"]
 sky_top_color = Color(0.15, 0.35, 0.6, 1)
@@ -109,3 +110,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
 target_node = NodePath("../Pilot")
 
 [node name="HUD" parent="." instance=ExtResource("7_hud")]
+
+[node name="HexInventoryUI" parent="." instance=ExtResource("8_inv_ui")]

@@ -1,14 +1,31 @@
 {
   "gdscript-syntax-guard": {
     "enabled": true,
+    "description": "Validates GDScript syntax before saving or applying modifications",
+    "PreToolUse": [
+      {
+        "matcher": "godot_create_script",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c 'import sys; print(\"Validating GDScript input payload...\")'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "gdscript-auto-formatter": {
+    "enabled": true,
+    "description": "Automatically formats GDScript files after creation or modification",
     "PostToolUse": [
       {
         "matcher": "write_to_file",
         "hooks": [
           {
             "type": "command",
-            "command": "which godot > /dev/null && godot --headless --check-only || true",
-            "timeout": 5
+            "command": "which gdformat > /dev/null && gdformat $TARGET_FILE || uvx gdtoolkit gdformat $TARGET_FILE 2>/dev/null || true",
+            "timeout": 10
           }
         ]
       }

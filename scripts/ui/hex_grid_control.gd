@@ -23,8 +23,12 @@ var preview_rotation_step: int = 0
 var preview_root_cell: Vector2i = Vector2i(-999, -999)
 var is_preview_valid: bool = false
 
+var _on_inv_changed_callable: Callable
+
 func _ready() -> void:
 	custom_minimum_size = Vector2(280, 240)
+	_on_inv_changed_callable = func(_it: Variant = null) -> void: queue_redraw()
+	
 	mouse_entered.connect(func() -> void: is_mouse_inside = true)
 	mouse_exited.connect(func() -> void:
 		is_mouse_inside = false
@@ -33,14 +37,17 @@ func _ready() -> void:
 	)
 	
 	if grid_inventory:
-		grid_inventory.item_placed.connect(func(_it: HexItemData, _slot: Vector2i) -> void: queue_redraw())
-		grid_inventory.item_removed.connect(func(_it: HexItemData) -> void: queue_redraw())
+		set_inventory(grid_inventory)
 
 func set_inventory(inv: HexInventoryComponent) -> void:
+	if grid_inventory and is_instance_valid(grid_inventory):
+		if grid_inventory.inventory_changed.is_connected(_on_inv_changed_callable):
+			grid_inventory.inventory_changed.disconnect(_on_inv_changed_callable)
+	
 	grid_inventory = inv
 	if grid_inventory:
-		grid_inventory.item_placed.connect(func(_it: HexItemData, _slot: Vector2i) -> void: queue_redraw())
-		grid_inventory.item_removed.connect(func(_it: HexItemData) -> void: queue_redraw())
+		if not grid_inventory.inventory_changed.is_connected(_on_inv_changed_callable):
+			grid_inventory.inventory_changed.connect(_on_inv_changed_callable)
 	queue_redraw()
 
 func _gui_input(event: InputEvent) -> void:

@@ -75,9 +75,18 @@ func _on_grid_cell_clicked(grid: HexGridControl, cell: Vector2i, button: int, is
 	
 	if button == MOUSE_BUTTON_LEFT:
 		if held_item:
-			_try_drop_item(grid, cell)
+			# Try target cell first, or hovered cell
+			var target_cell: Vector2i = cell
+			if not grid.grid_inventory.can_place_item(held_item, target_cell, held_rotation_step):
+				if grid.grid_inventory.can_place_item(held_item, grid.hovered_cell, held_rotation_step):
+					target_cell = grid.hovered_cell
+			_try_drop_item(grid, target_cell)
 		else:
 			var item: HexItemData = grid.grid_inventory.get_item_at(cell)
+			if not item and grid.grid_inventory.get_item_at(grid.hovered_cell):
+				item = grid.grid_inventory.get_item_at(grid.hovered_cell)
+				cell = grid.hovered_cell
+			
 			if item:
 				if is_shift:
 					_quick_transfer_item(item, grid.grid_inventory)
@@ -99,7 +108,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			_rotate_held_item()
 
 func open_contextual_inventory() -> void:
-	# Search for nearby loot crate / sled / backpack
 	var pilot_nodes: Array[Node] = get_tree().get_nodes_in_group(&"player_pilot")
 	var pilot: Pilot = pilot_nodes[0] as Pilot if not pilot_nodes.is_empty() else null
 	
@@ -110,35 +118,34 @@ func open_contextual_inventory() -> void:
 	if pilot:
 		backpack_comp = pilot.get_node_or_null("BackpackInventoryComponent") as HexInventoryComponent
 		
-		# Check nearby crates
-		var crates: Array[Node] = get_tree().get_nodes_in_group(&"loot_crates")
-		if crates.is_empty():
-			var all_crates: Array[Node] = get_tree().root.find_children("*Crate*", "GroundCrate", true, false)
-			for c: Node in all_crates:
-				if c is Node3D and is_instance_valid(c):
-					if (c as Node3D).global_position.distance_to(pilot.global_position) <= 4.0:
-						crate_comp = c.get_node_or_null("HexInventoryComponent") as HexInventoryComponent
-						break
+		# Find nearest crate within 4m
+		var all_crates: Array[Node] = get_tree().root.find_children("*Crate*", "GroundCrate", true, false)
+		for c: Node in all_crates:
+			if c is Node3D and is_instance_valid(c):
+				if (c as Node3D).global_position.distance_to(pilot.global_position) <= 4.0:
+					crate_comp = c.get_node_or_null("HexInventoryComponent") as HexInventoryComponent
+					break
 	
-	# Check sled inventory
+	# Find sled inventory
 	var sled_nodes: Array[Node] = get_tree().get_nodes_in_group(&"player_sled")
-	if not sled_nodes.is_empty() and sled_nodes[0] is Node:
-		sled_comp = sled_nodes[0].get_node_or_null("CenterOfMassComponent/HexInventoryComponent") as HexInventoryComponent
+	if not sled_nodes.is_empty() and is_instance_valid(sled_nodes[0]):
+		sled_comp = sled_nodes[0].get_node_or_null("CenterOfMassComponent/CargoPodInventory") as HexInventoryComponent
 	
-	# Configure dual panels
+	# Assign containers
 	if crate_comp:
 		source_container = crate_comp
 		left_title.text = "GROUND CRATE"
+		if sled_comp:
+			target_container = sled_comp
+			right_title.text = "SLED CARGO POD"
+		else:
+			target_container = backpack_comp
+			right_title.text = "PILOT BACKPACK"
 	else:
-		source_container = null
-		left_title.text = "NO LOCAL CACHE"
-	
-	if sled_comp:
+		source_container = backpack_comp
+		left_title.text = "PILOT BACKPACK"
 		target_container = sled_comp
 		right_title.text = "SLED CARGO POD"
-	elif backpack_comp:
-		target_container = backpack_comp
-		right_title.text = "PILOT BACKPACK"
 	
 	left_grid_control.set_inventory(source_container)
 	right_grid_control.set_inventory(target_container)
@@ -162,6 +169,8 @@ func _start_dragging(item: HexItemData, source_inv: HexInventoryComponent, sourc
 	source_inv_for_drag = source_inv
 	source_slot_for_drag = source_slot
 	source_inv.remove_item(item)
+	left_grid_control.queue_redraw()
+	right_grid_control.queue_redraw()
 	_update_tooltip(held_item)
 
 func _rotate_held_item() -> void:
@@ -185,7 +194,10 @@ func _try_drop_item(grid: HexGridControl, cell: Vector2i) -> void:
 		held_item = null
 		source_inv_for_drag = null
 		grid.grid_inventory.place_item(dropped_item, cell, rot)
-		grid.clear_custom_drag_preview()
+		left_grid_control.clear_custom_drag_preview()
+		right_grid_control.clear_custom_drag_preview()
+		left_grid_control.queue_redraw()
+		right_grid_control.queue_redraw()
 		if floating_cursor_ghost:
 			floating_cursor_ghost.queue_redraw()
 		_update_tooltip(null)
@@ -209,6 +221,8 @@ func _quick_transfer_item(item: HexItemData, source_inv: HexInventoryComponent) 
 			if destination.can_place_item(item, slot, rot):
 				source_inv.remove_item(item)
 				destination.place_item(item, slot, rot)
+				left_grid_control.queue_redraw()
+				right_grid_control.queue_redraw()
 				_update_tooltip(null)
 				return
 
@@ -219,6 +233,8 @@ func _cancel_drag() -> void:
 	source_inv_for_drag = null
 	left_grid_control.clear_custom_drag_preview()
 	right_grid_control.clear_custom_drag_preview()
+	left_grid_control.queue_redraw()
+	right_grid_control.queue_redraw()
 	if floating_cursor_ghost:
 		floating_cursor_ghost.queue_redraw()
 	_update_tooltip(null)

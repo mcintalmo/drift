@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://c8n8s7l3e4d1"]
+[gd_scene load_steps=19 format=3 uid="uid://c8n8s7l3e4d1"]
 
 [ext_resource type="Script" path="res://scripts/entities/sled/sled_chassis.gd" id="1_chassis"]
 [ext_resource type="Script" path="res://scripts/components/health_component.gd" id="2_health"]
@@ -11,6 +11,7 @@
 [ext_resource type="Script" path="res://scripts/state_machine/sled_states/sled_drifting_state.gd" id="9_drift_state"]
 [ext_resource type="Script" path="res://scripts/state_machine/sled_states/sled_airborne_state.gd" id="10_air"]
 [ext_resource type="Script" path="res://scripts/state_machine/sled_states/sled_tethered_state.gd" id="11_tether"]
+[ext_resource type="Script" path="res://scripts/components/hex_inventory_component.gd" id="12_inv"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_chassis"]
 size = Vector3(1.6, 0.6, 2.4)
@@ -76,9 +77,13 @@ script = ExtResource("4_drift")
 target_body = NodePath("..")
 ground_raycast = NodePath("../GroundRayCast3D")
 
-[node name="CenterOfMassComponent" type="Node" parent="." node_paths=PackedStringArray("drift_component")]
+[node name="CenterOfMassComponent" type="Node" parent="." node_paths=PackedStringArray("drift_component", "container_inventories")]
 script = ExtResource("5_com")
 drift_component = NodePath("../InertialDriftComponent")
+container_inventories = [NodePath("CargoPodInventory")]
+
+[node name="CargoPodInventory" type="Node" parent="CenterOfMassComponent"]
+script = ExtResource("12_inv")
 
 [node name="SledWinchComponent" type="Node3D" parent="." node_paths=PackedStringArray("parent_body")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, -1.1)

@@ -5,6 +5,7 @@ signal inventory_changed(items: Array[HexItemData])
 signal item_added(item: HexItemData, root_coord: Vector2i)
 signal item_removed(item: HexItemData)
 signal item_placed(item: HexItemData, root_coord: Vector2i)
+signal items_settled
 
 @export var container_mount: ContainerMountData
 @export var hex_cell_size_m: float = 0.25
@@ -27,7 +28,6 @@ func _ready() -> void:
 		container_mount = ContainerMountData.new()
 
 ## Checks if an item can be placed at a root axial coordinate with a given rotation
-## Note: Hard weight rejection is removed in favor of dynamic encumbrance physics!
 func can_place_item(item: HexItemData, root_coord: Vector2i, rotation_step: int = 0) -> bool:
 	if not item:
 		return false
@@ -88,6 +88,61 @@ func remove_item(item: HexItemData) -> bool:
 	inventory_changed.emit(_placed_items)
 	return true
 
+## Applies pseudo-gravity settling: unsupported floating items fall down toward the lowest available slots
+func apply_pseudo_gravity_settling() -> bool:
+	if _placed_items.is_empty():
+		return false
+	
+	var any_moved: bool = false
+	var items_to_settle: Array[HexItemData] = _placed_items.duplicate()
+	
+	# Sort items by bottom-most cell (highest r) descending so lowest items settle first
+	items_to_settle.sort_custom(func(a: HexItemData, b: HexItemData) -> bool:
+		var max_r_a: int = -9999
+		var root_a: Vector2i = _item_root_coords.get(a, Vector2i.ZERO)
+		for off: Vector2i in a.get_rotated_footprint(a.rotation_step):
+			max_r_a = maxi(max_r_a, root_a.y + off.y)
+			
+		var max_r_b: int = -9999
+		var root_b: Vector2i = _item_root_coords.get(b, Vector2i.ZERO)
+		for off: Vector2i in b.get_rotated_footprint(b.rotation_step):
+			max_r_b = maxi(max_r_b, root_b.y + off.y)
+			
+		return max_r_a > max_r_b
+	)
+	
+	for item: HexItemData in items_to_settle:
+		if not _item_root_coords.has(item):
+			continue
+		
+		var current_root: Vector2i = _item_root_coords[item]
+		var rot: int = item.rotation_step
+		
+		# Temporarily lift item from grid to test downward path
+		remove_item(item)
+		
+		var test_root: Vector2i = current_root
+		var lowest_valid_root: Vector2i = current_root
+		
+		# Step downward in vertical +r axis
+		while true:
+			var candidate_root: Vector2i = test_root + Vector2i(0, 1)
+			if can_place_item(item, candidate_root, rot):
+				lowest_valid_root = candidate_root
+				test_root = candidate_root
+			else:
+				break
+		
+		place_item(item, lowest_valid_root, rot)
+		if lowest_valid_root != current_root:
+			any_moved = true
+	
+	if any_moved:
+		items_settled.emit()
+		inventory_changed.emit(_placed_items)
+	
+	return any_moved
+
 func get_item_at(coord: Vector2i) -> HexItemData:
 	return _grid_slots.get(coord, null)
 
@@ -126,7 +181,7 @@ func get_encumbrance_tier() -> StringName:
 		return &"encumbered"
 	return &"nominal"
 
-## Converts an axial hex coordinate (q, r) to 2D Cartesian offset (X=right, Y=fore/aft)
+## Converts an axial hex coordinate (q, r) to 2D Cartesian offset (X=lateral, Y=height)
 func axial_to_cartesian(coord: Vector2i) -> Vector2:
 	var x: float = hex_cell_size_m * (SQRT_3 * coord.x + (SQRT_3 / 2.0) * coord.y)
 	var y: float = hex_cell_size_m * (1.5 * coord.y)

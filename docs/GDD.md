@@ -175,26 +175,28 @@ Sled locomotion uses an **Inertial Friction Model**. The vehicle maintains its l
       (Determined by Surface μ)       (Inertia preserved until friction catches)
 ```text
 
-### 3.2 Cargo Equilibrium & Center-of-Mass ($\vec{COM}$)
+### 3.2 Cargo Equilibrium, Vertical Rack Orientation & Pseudo-Gravity Settling
 
-- **Hex-Based Modular Cargo Grid**:
-  - The sled bed features a spatial hexagonal grid.
-  - Containers come in upgradeable geometric profiles (single cell, triangle triple, long 4-hex bar, 7-hex heavy vault).
-  - Every salvaged item has an intrinsic mass ($m_i$) and hex footprint.
+- **Paradigm A: Vertical Rack Spatial Orientation (Height $Y$ & Lateral $X$)**:
+  - The hex cargo grid is aligned along the vertical cross-section of the vehicle/backpack:
+    - **Grid Horizontal Axis ($X$)**: Maps directly to lateral width ($X_{\text{3D}}$). Placing heavy items Left or Right induces lateral tipping torque ($\tau_{\text{roll}} = M \cdot g \cdot X_{\vec{COM}}$) and asymmetric steering drag.
+    - **Grid Vertical Axis ($Y$)**: Maps directly to physical height ($Y_{\text{3D}}$).
+      - *Top of Grid ($-r \to +Y$ Height)*: Elevates Center-of-Mass height ($h_{\vec{COM}}$). High loads multiply centrifugal rollover torque ($\tau = \frac{M v^2}{R} \cdot h_{\vec{COM}}$), dramatically increasing tipping risk during high-speed cornering.
+      - *Bottom of Grid ($+r \to -Y$ Grounded)*: Lowers Center of Gravity ($h_{\vec{COM}}$), anchoring the chassis to the ice, resisting roll, and maximizing high-speed drift stability.
+    - **Governing Packing Maxim**: *"Pack heavy mass low and centered."*
 
-- **Center-of-Mass Calculation**:
-  $$\vec{COM} = \frac{\sum m_i \cdot \vec{r}_i}{\sum m_i + M_{sled}}$$
-  - If $\vec{COM}$ shifts significantly off the longitudinal centerline or sits too far aft/fore:
-    - *Aft Bias*: Front runners lose bite, severe understeer.
-    - *Fore Bias*: Heavy nose drag, oversteer on ice.
-    - *Lateral Bias*: Tipping hazard increases when cornering toward the heavy side.
+- **Pseudo-Gravity Inventory Settling**:
+  - Because accessing the inventory pauses the active game simulation, spatial arrangement is deliberate and non-rushed.
+  - However, upon exiting the inventory and unpausing simulation, **Pseudo-Gravity Settling** takes effect:
+    - Any cargo item suspended in mid-air with unsupported empty hex slots directly below it will dynamically "fall" and settle downward into the lowest available supporting grid slots.
+    - Players must account for gravity settling so unanchored heavy cargo doesn't unexpectedly drop and shift the vehicle's center of mass during high-speed runs.
 
 - **Diegetic Tipping Warnings & Active Weight Shifting**:
   - Tipping is communicated via:
     1. Visual chassis tilt and runner sparks.
     2. Audio cues: metal groaning and cargo strap tension creaks.
-    3. HUD roll-stability indicator.
-  - **Active Pilot Counter-Lean**: The pilot can shift their physical weight using the steering/lean axis, countering lateral roll moment to keep runners grounded during high-G turns.
+    3. HUD roll-stability indicator and Lateral Bias Bar.
+  - **Active Pilot Counter-Lean**: The pilot can shift their physical weight using the steering/lean axis (`Q` / `E`), countering lateral roll moment to keep runners grounded during high-G turns.
 
 ### 3.3 Elevation, Jumps, and Traversal
 
@@ -364,7 +366,45 @@ graph LR
     2. **Geothermal Arteries**: Melts subterranean ice corridors, creating permanent high-speed highway routes that bypass hazardous mountain crags.
     3. **Biosphere Domes**: Restores natural vegetation and warm sanctuaries within the wasteland, generating free food, clean water, and wood supplies.
 
-### 4.4 Progression Synergy: Communal Interdependence
+### 4.4 Modular Containerized Storage, Secret Compartments & The Smuggling Economy
+
+```text
+[MODULAR CONTAINERIZED STORAGE ARCHITECTURE]
+
++---------------------------------------------------------------------------------------------------+
+| CONTAINER ARCHETYPE  | COMPARTMENT TOPOLOGY                 | GAMEPLAY TRADE-OFFS & PROPERTIES    |
++----------------------+--------------------------------------+-------------------------------------+
+| STARTER BACKPACK     | Single contiguous medium grid (7-hex)| Fits medium polyominos; zero safety |
++----------------------+--------------------------------------+-------------------------------------+
+| EXPEDITION RUCK      | Main Compartment (6-hex)             | High capacity, but segmented walls  |
+|                      | + Dual Side Pouches (2x 1-hex)       | block oversized 3-4 hex polyominos  |
+|                      | + Secret Roll-Top Pocket (1-hex)     | Items in Secret Pocket are SAFE     |
++----------------------+--------------------------------------+-------------------------------------+
+| SLED FLATBED RACK    | Wide open central bed (12-hex)       | Maximum open volume; high roll risk |
++----------------------+--------------------------------------+-------------------------------------+
+| LOW-SLUNG PANNIERS   | Twin Left/Right Pods (2x 4-hex)      | Lowers COM height; prevents tipping |
++----------------------+--------------------------------------+-------------------------------------+
+| SMUGGLER CHASSIS     | Concealed Lead-Lined Vault (2-hex)   | Shielded from Corpo inspection      |
++---------------------------------------------------------------------------------------------------+
+```
+
+- **Containerized Sub-Compartments & Spatial Trade-Offs**:
+  - Rather than just increasing flat grid size, higher-tier backpacks and sled frames feature **segmented sub-compartments** (e.g. Main Cavity, Flap Pouches, Low-slung Panniers).
+  - *The Strategic Trade-Off*: Multi-compartment setups provide more total slots and granular weight distribution, but internal dividing walls prevent large 3-4 hex polyominos (like heavy rail bars and reactor cores) from fitting into a single chamber.
+
+- **Secret Compartments & "Safe Pockets"**:
+  - Designated **Secret Compartments** in advanced backpacks and smuggler sled chassis act as permanent safe pockets.
+  - When the pilot suffers hypothermia/vitality collapse ($HP = 0$) and fires the emergency rescue flare:
+    - *Standard Cargo*: Lost and abandoned on the ice (scavenged by rivals or recovered only via Cargo Flares).
+    - *Secret Compartment Cargo*: **Permanently retained** across deaths/extractions into the Sanctuary Base Camp.
+
+- **Contraband Smuggling Quests & Corpo Inspection Checkpoints**:
+  - High-value contracts require transporting illegal technology, decrypted AI cores, or forbidden medical serums from Node A to Node C through transit Node B.
+  - **Random Corpo Inspection Checkpoints**: Between transit nodes, automated Corpo border outposts scan the sled's inventory.
+    - If contraband is stored in an open/standard compartment: The items are confiscated, the player is fined, and Corpo alert levels spike.
+    - If contraband is hidden within a **Secret Compartment**: Scans report clean, allowing successful transit and massive payout upon delivery.
+
+### 4.5 Progression Synergy: Communal Interdependence
 
 ```text
 [CAMP WORKSHOP & TECH DISCOVERY FLOW]
@@ -383,7 +423,7 @@ Scavenged "Information" (Books, Drives, Logs) + Raw Scrap / Wood / Cloth
     • Tier 1-4 Furnace (Warmth)         • Reinforced Alloy Skis
     • Infirmary (Vitality Buffs)        • High-Torque Grapple Winches
     • Radio Relay (DAG Map Intel)       • Hex Vault Expansion Modules
-```text
+```
 
 - **Lore-Driven Tech Gating**:
   - The solitary scavenger cannot manufacture advanced aerospace sled runners or geothermal heaters alone.
@@ -415,41 +455,36 @@ Scavenged "Information" (Books, Drives, Logs) + Raw Scrap / Wood / Cloth
                     ▼
    ZONE 4: The Dead Core (Extreme Sub-Zero Abyss)
    • Perpetual whiteout storms, ancient mainframe bunkers, pure geothermal rifts.
-```text
+```
 
-### 5.1 The Four Governing Factions
+### 5.1 Dynamic Living World Faction Feedback Ecosystem
 
 ```mermaid
 graph TD
-    Player["Player & Autonomous Settlements (Us)"]
-    Rivals["Rival Scavengers (Gangs & Lone Wolves)"]
-    Corpos["The Corpos (Automated Rail & Cache Defenses)"]
-    Fauna["The Wilderness (Cryo-Fauna & Cryo-Husks)"]
-
-    Player <-->|Competition & Diplomatic Integration| Rivals
-    Player <-->|Train Heists & Vault Raids| Corpos
-    Player <-->|Survival & Hunting| Fauna
-    Rivals <-->|Skirmishes & Resource Raids| Corpos
-    Fauna <-->|Territorial Attacks| Rivals
-    Fauna <-->|Disrupts Rail Lines| Corpos
-```text
+    subgraph FeedbackLoops [Living World Ecosystem Feedback]
+        F1[Player Smuggling Success] -->|Enriches Commune| F2[Sanctuary Grows: New Blueprints & AI Escorts]
+        F3[Player Smuggling Failure / Confiscation] -->|Arms Corpos| F4[Corpos Escalate: Heavy Walker Patrols & Richer Heists]
+        F5[Player Death / Unflared Loot Drop] -->|Arms Rivals| F6[Rival Scavengers Upgrade Sleds & Ambush Density]
+        F7[Falling Global Temperature / Smog Rise] -->|Mutates Wilderness| F8[Cryo-Fauna Hyper-Aggression & Territory Expansion]
+    end
+```
 
 1. **The Autonomous Settlements & Player ("Us")**:
    - Resilient, cooperative human enclaves striving for thermal stability, shared technology, and long-term ecological remediation.
+   - **Community Growth Impact**: Delivering resources and completing smuggling contracts attracts refugee engineers, unlocks discount workshop merchants, and deploys friendly AI scout sleds along DAG routes.
 
-2. **Rival Scavengers**:
-   - Opportunistic, desperate survivors. They drive makeshift, agile sleds, compete for active salvage nodes, and ambush players during transport runs.
-   - **Community Integration Loop**: A key mid-to-late game mechanic involves winning over or negotiating with rival scavengers. Donating surplus rations, medical supplies, and heat cells allows the player's camp to absorb rival factions, turning dangerous hostiles into friendly trade caravans and AI escorts.
+2. **Rival Scavengers (Dynamic Scrap Recycling)**:
+   - Opportunistic, desperate survivors driving agile combat sleds.
+   - **Death Wreckage Loot Dispersion**: When the player collapses and drops valuable unflared cargo, nearby rival scavengers salvage the wreck. In subsequent runs, rival warbands sport upgraded sled hulls, heavy harpoons, and drop richer scrap bounties when defeated.
 
-3. **The Megacorporations ("Corpos")**:
-   - The cold, automated remnants of the pre-collapse corporate elite.
-   - They operate the massive, armored high-speed freight trains cutting across the continent and protect fortified vault caches.
-   - **Forces**: 100% robotic and autonomous (Sentry Drones, Rail Defense Sentinels, Heavy Walker Guards, Automated Railgun Turrets).
-   - **Armored Train Heist Anatomy & Tactical Options**:
-     - *Decoupling the Cars*: The pilot can board the roof between cars and pull/cut the mechanical coupler lever, cleanly detaching the rear freight cars so they roll to a stop on the open track for safe scavenging.
-     - *In-Motion Interior Breach*: The pilot can use the **Plasma Cutter** or heavy blaster fire to blow open the exterior side loading bay doors, entering the moving train car interior to fight robotic sentinels and loot high-tier vault containers while the train continues racing forward.
+3. **The Megacorporations (Corpo Escalation Dynamics)**:
+   - Automated rail and cache defense networks.
+   - **Reactive Armoring & Escalation**:
+     - When players fail smuggling runs or repeatedly raid train cars, Corpos requisition confiscated tech to fortify rail corridors: rail turrets gain EMP shielding, automated sentinels increase patrol frequency, and armored trains add heavy walker escorts.
+     - *Risk/Reward Trade-Off*: While escalated Corpo nodes become significantly more dangerous, successful breaches in escalated sectors yield vastly higher-tier ancient technology and pristine fuel cells.
 
 4. **The Wilderness (Cryo-Fauna & Cryo-Husks)**:
+   - **Thermal Hyper-Aggression**: As sector temperatures drop and blizzard smog rises, Cryo-fauna metabolisms mutate, increasing their pack sizes, hunting radii, and territorial aggression across travel corridors.
    - *Cryo-Fauna*: Endemic mutant creatures adapted to absolute zero (Glacial Yetis, Burrowing Snow Swarmers, Razor-Beak Stalkers).
    - *Cryo-Husks*: Deep-game frozen human laborers and cybernetically preserved workers trapped in sub-zero suspended animation, reanimating within interior ruins and derelict vaults.
 
@@ -666,14 +701,14 @@ LAYER A: PROCEDURAL HEX WORLD MAP GRID
                      \ /     \ /
                       |
                       ▼
-LAYER B: NESTED HEX INVENTORY SYSTEM
-• Ground Crates / Derelict Vaults (Fixed World Sources)
+LAYER B: NESTED VERTICAL HEX INVENTORY SYSTEM (PARADIGM A)
+• Ground Crates / Derelict Vaults (Fixed World Sources, Breached via Plasma Tool)
       │ (Player scavenges on foot)
       ▼
-• Pilot Backpack Container (Wearable 7-hex pocket)
+• Modular Pilot Backpacks (Single open grid or segmented multi-chamber rucks with Safe Pockets)
       │ (Player loads onto vehicle)
       ▼
-• Sled Modular Containers (Nestable pods installed into chassis bed)
+• Sled Modular Cargo Pods (Chassis hardpoints: Flatbed Rack, Low Panniers, Airlift Pods, Secret Vaults)
 ```text
 
 1. **Layer A: Procedural Hexagonal World Grid & Geometry Barriers**:
@@ -686,10 +721,18 @@ LAYER B: NESTED HEX INVENTORY SYSTEM
    - **Collision Physics & Component Damage Transmission**: Sled collisions with barriers calculate kinetic impact energy ($E_k = \frac{1}{2} M_{total} v^2$), directly cutting hull health and passing shock waves to internal hardware sockets based on chassis integrity.
    - Procedural generation stitches terrain chunks seamlessly and calculates continuous paths for train rails and rival courier routes.
 
-2. **Layer B: Nested Hex Inventory Hierarchy**:
-   - **Ground Containers**: Static world fixtures found in ruins and train cars. Cannot be moved; player opens on foot to retrieve individual hex items.
-   - **Player Backpack**: Wearable container for quick scavenging on foot.
-   - **Sled Containers**: Discrete modular pods (e.g., 3-hex triangle, 4-hex bar, 7-hex heavy vault) bolted onto the sled frame. Containers can be unbolted, upgraded, or rearranged to tune center-of-mass balance.
+2. **Layer B: Nested Vertical Hex Inventory & Pseudo-Gravity Settling**:
+   - **Vertical Coordinate Mapping ($X$ Lateral, $Y$ Height)**:
+     - Top of grid raises $h_{\vec{COM}}$ (amplifying centrifugal tipping roll torque $\tau_{\text{roll}}$).
+     - Bottom of grid lowers $h_{\vec{COM}}$ (grounding the sled and pilot for stable cornering).
+   - **Pseudo-Gravity Settling**:
+     - Inventory editing occurs during simulation pause.
+     - Upon unpausing, unanchored items suspended in mid-air drop downward to the lowest available supporting slots.
+   - **Modular Sub-Compartment Topology**:
+     - Upgraded containers feature internal dividing walls separating main cavities from side pouches and secret pockets.
+     - Large polyominos cannot span across divided chambers, forcing strategic spatial planning.
+   - **Secret Compartment Safe Pockets**:
+     - Hardware-shielded slots that protect contraband from Corpo inspection scanners and persist cargo across player death into the Sanctuary Base Camp.
 
 ### 7.4 Pilot & Character Weaponry
 

@@ -8,6 +8,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_overlapping_placement_rejected())
 	results.append(_test_out_of_bounds_placement_rejected())
 	results.append(_test_item_removal())
+	results.append(_test_pseudo_gravity_settling())
 	return results
 
 func _test_single_cell_placement() -> Dictionary:
@@ -116,4 +117,32 @@ func _test_item_removal() -> Dictionary:
 		"name": "test_item_removal",
 		"passed": passed,
 		"message": "Item removed and slots cleared successfully"
+	}
+
+func _test_pseudo_gravity_settling() -> Dictionary:
+	var container: HexInventoryComponent = HexInventoryComponent.new()
+	var mount: ContainerMountData = ContainerMountData.new()
+	mount.slot_layout = [Vector2i(0, -1), Vector2i(0, 0), Vector2i(0, 1)]
+	container.container_mount = mount
+	
+	var item: HexItemData = HexItemData.new()
+	item.item_id = &"floating_scrap"
+	item.mass_kg = 20.0
+	item.hex_footprint = [Vector2i(0, 0)]
+	
+	# Place floating at top (0, -1)
+	container.place_item(item, Vector2i(0, -1))
+	
+	# Apply pseudo gravity settling
+	var moved: bool = container.apply_pseudo_gravity_settling()
+	var settled_item: HexItemData = container.get_item_at(Vector2i(0, 1))
+	var top_slot_cleared: bool = (container.get_item_at(Vector2i(0, -1)) == null)
+	
+	var passed: bool = moved and (settled_item == item) and top_slot_cleared
+	
+	container.free()
+	return {
+		"name": "test_pseudo_gravity_settling",
+		"passed": passed,
+		"message": "Floating item at (0, -1) settled downward to (0, 1)"
 	}

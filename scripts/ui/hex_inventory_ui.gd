@@ -195,6 +195,18 @@ func open_contextual_inventory() -> void:
 func close_inventory() -> void:
 	if held_item:
 		_cancel_drag()
+	
+	# Apply pseudo-gravity settling to all open containers
+	if backpack_inventory:
+		backpack_inventory.apply_pseudo_gravity_settling()
+	if sled_inventory:
+		sled_inventory.apply_pseudo_gravity_settling()
+	if crate_inventory:
+		crate_inventory.apply_pseudo_gravity_settling()
+	
+	if sled_com_component and is_instance_valid(sled_com_component):
+		sled_com_component.recalculate_com()
+	
 	is_open = false
 	root_control.visible = false
 	left_grid_control.clear_custom_drag_preview()
@@ -270,7 +282,7 @@ func _refresh_container_panels() -> void:
 		if com_widget:
 			com_widget.update_com_data(
 				sled_com_component.current_total_mass_kg,
-				Vector2(sled_com_component.current_com_offset_3d.x, sled_com_component.current_com_offset_3d.z)
+				Vector2(sled_com_component.current_com_offset_3d.x, sled_com_component.current_com_offset_3d.y)
 			)
 
 func _update_tab_buttons() -> void:

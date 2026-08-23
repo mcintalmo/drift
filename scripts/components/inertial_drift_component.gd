@@ -26,6 +26,7 @@ var heading_angle_rad: float = 0.0
 var roll_angle_rad: float = 0.0
 var current_total_mass_kg: float = 250.0
 var external_com_lateral_offset_m: float = 0.0
+var external_com_height_m: float = 0.25
 var pilot_lean_axis: float = 0.0 # Range [-1.0, 1.0]
 
 const GRAVITY: float = 9.81
@@ -170,8 +171,9 @@ func _update_roll_dynamics(delta: float, lateral_speed: float, steer_input: floa
 	# 1. Static gravity tilt from lateral COM offset
 	var static_com_roll: float = (external_com_lateral_offset_m / 0.20) * deg_to_rad(20.0)
 	
-	# 2. Dynamic centrifugal roll during turns
-	var centrifugal_roll: float = (lateral_speed * 0.05) + (steer_input * (speed_mag / 16.0) * deg_to_rad(14.0))
+	# 2. Dynamic centrifugal roll during turns (amplified by height)
+	var height_factor: float = clampf(external_com_height_m / 0.25, 0.5, 2.5)
+	var centrifugal_roll: float = ((lateral_speed * 0.05) + (steer_input * (speed_mag / 16.0) * deg_to_rad(14.0))) * height_factor
 	
 	# 3. Pilot counter-lean stabilization (Q / E)
 	var pilot_lean: float = pilot_lean_axis * deg_to_rad(18.0)

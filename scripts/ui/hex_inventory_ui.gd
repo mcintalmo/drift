@@ -13,6 +13,7 @@ enum ContainerType {
 
 # Container Components
 var crate_inventory: HexInventoryComponent = null
+var nearby_locked_crate: GroundCrate = null
 var backpack_inventory: HexInventoryComponent = null
 var sled_inventory: HexInventoryComponent = null
 var sled_com_component: CenterOfMassComponent = null
@@ -206,6 +207,7 @@ func _discover_scene_inventories() -> void:
 	var pilot: Pilot = pilot_nodes[0] as Pilot if not pilot_nodes.is_empty() else null
 	
 	crate_inventory = null
+	nearby_locked_crate = null
 	backpack_inventory = null
 	sled_inventory = null
 	sled_com_component = null
@@ -215,10 +217,14 @@ func _discover_scene_inventories() -> void:
 		
 		var all_crates: Array[Node] = get_tree().root.find_children("*Crate*", "GroundCrate", true, false)
 		for c: Node in all_crates:
-			if c is Node3D and is_instance_valid(c):
-				if (c as Node3D).global_position.distance_to(pilot.global_position) <= 4.5:
-					crate_inventory = c.get_node_or_null("HexInventoryComponent") as HexInventoryComponent
-					break
+			if c is GroundCrate and is_instance_valid(c):
+				var crate: GroundCrate = c as GroundCrate
+				if crate.global_position.distance_to(pilot.global_position) <= 4.5:
+					if not crate.is_locked:
+						crate_inventory = crate.get_node_or_null("HexInventoryComponent") as HexInventoryComponent
+						break
+					else:
+						nearby_locked_crate = crate
 	
 	var sled_nodes: Array[Node] = get_tree().get_nodes_in_group(&"player_sled")
 	if not sled_nodes.is_empty() and is_instance_valid(sled_nodes[0]):
@@ -268,18 +274,26 @@ func _refresh_container_panels() -> void:
 			)
 
 func _update_tab_buttons() -> void:
-	_apply_tab_style(left_crate_tab, left_container_type == ContainerType.GROUND_CRATE, crate_inventory != null and right_container_type != ContainerType.GROUND_CRATE)
+	var crate_available: bool = (crate_inventory != null)
+	var crate_btn_text: String = "Crate" if not nearby_locked_crate else "Crate [LOCKED]"
+	
+	if left_crate_tab:
+		left_crate_tab.text = crate_btn_text
+	if right_crate_tab:
+		right_crate_tab.text = crate_btn_text
+	
+	_apply_tab_style(left_crate_tab, left_container_type == ContainerType.GROUND_CRATE, crate_available and right_container_type != ContainerType.GROUND_CRATE)
 	_apply_tab_style(left_backpack_tab, left_container_type == ContainerType.PILOT_BACKPACK, backpack_inventory != null and right_container_type != ContainerType.PILOT_BACKPACK)
 	_apply_tab_style(left_sled_tab, left_container_type == ContainerType.SLED_CARGO_POD, sled_inventory != null and right_container_type != ContainerType.SLED_CARGO_POD)
 	
-	_apply_tab_style(right_crate_tab, right_container_type == ContainerType.GROUND_CRATE, crate_inventory != null and left_container_type != ContainerType.GROUND_CRATE)
+	_apply_tab_style(right_crate_tab, right_container_type == ContainerType.GROUND_CRATE, crate_available and left_container_type != ContainerType.GROUND_CRATE)
 	_apply_tab_style(right_backpack_tab, right_container_type == ContainerType.PILOT_BACKPACK, backpack_inventory != null and left_container_type != ContainerType.PILOT_BACKPACK)
 	_apply_tab_style(right_sled_tab, right_container_type == ContainerType.SLED_CARGO_POD, sled_inventory != null and left_container_type != ContainerType.SLED_CARGO_POD)
 
 func _apply_tab_style(btn: Button, is_active: bool, is_available: bool) -> void:
 	if not btn:
 		return
-	btn.visible = is_available or is_active
+	btn.visible = is_available or is_active or (nearby_locked_crate != null and btn.name.begins_with("Crate"))
 	btn.disabled = not is_available and not is_active
 	btn.add_theme_stylebox_override(&"normal", active_tab_style if is_active else inactive_tab_style)
 
@@ -287,8 +301,12 @@ func _update_load_label(lbl: Label, inv: HexInventoryComponent, type: ContainerT
 	if not lbl:
 		return
 	if not inv:
-		lbl.text = "NO CONTAINER ATTACHED"
-		lbl.add_theme_color_override(&"font_color", Color(0.6, 0.6, 0.6, 0.8))
+		if type == ContainerType.GROUND_CRATE and nearby_locked_crate:
+			lbl.text = "CRATE LOCKED - BREACH LOCK TO ACCESS"
+			lbl.add_theme_color_override(&"font_color", Color(1.0, 0.3, 0.3, 1.0))
+		else:
+			lbl.text = "NO CONTAINER ATTACHED"
+			lbl.add_theme_color_override(&"font_color", Color(0.6, 0.6, 0.6, 0.8))
 		return
 	
 	var mass: float = inv.get_total_items_mass()

@@ -4,9 +4,9 @@ extends CanvasLayer
 const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 
 enum ContainerType {
-	GROUND_CRATE,
-	PILOT_BACKPACK,
-	SLED_CARGO_POD
+	GROUND_CRATE = 0,
+	PILOT_BACKPACK = 1,
+	SLED_CARGO_POD = 2
 }
 
 @export var is_open: bool = false
@@ -26,11 +26,24 @@ var held_rotation_step: int = 0
 var source_inv_for_drag: HexInventoryComponent = null
 var source_slot_for_drag: Vector2i = Vector2i(-999, -999)
 
+# Tab Styles
+var active_tab_style: StyleBoxFlat
+var inactive_tab_style: StyleBoxFlat
+
 @onready var root_control: Control = $RootControl
 @onready var left_grid_control: HexGridControl = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/HexGridControl
 @onready var right_grid_control: HexGridControl = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/HexGridControl
-@onready var left_tab_btn: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/Header/TabButton
-@onready var right_tab_btn: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/Header/TabButton
+@onready var left_load_label: Label = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/LeftLoadLabel
+@onready var right_load_label: Label = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/RightLoadLabel
+
+@onready var left_crate_tab: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/LeftTabBar/CrateTab
+@onready var left_backpack_tab: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/LeftTabBar/BackpackTab
+@onready var left_sled_tab: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/LeftTabBar/SledTab
+
+@onready var right_crate_tab: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/RightTabBar/CrateTab
+@onready var right_backpack_tab: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/RightTabBar/BackpackTab
+@onready var right_sled_tab: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/RightTabBar/SledTab
+
 @onready var com_widget: COMVisualizerWidget = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/COMVisualizerWidget
 @onready var tooltip_name: Label = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer/ItemNameLabel
 @onready var tooltip_mass: Label = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer/ItemMassLabel
@@ -39,15 +52,41 @@ var source_slot_for_drag: Vector2i = Vector2i(-999, -999)
 
 func _ready() -> void:
 	root_control.visible = is_open
+	_init_tab_styles()
 	_setup_grid_listeners(left_grid_control)
 	_setup_grid_listeners(right_grid_control)
 	if floating_cursor_ghost:
 		floating_cursor_ghost.draw.connect(_on_draw_floating_ghost)
 	
-	if left_tab_btn:
-		left_tab_btn.pressed.connect(_cycle_left_container)
-	if right_tab_btn:
-		right_tab_btn.pressed.connect(_cycle_right_container)
+	# Left tab signals
+	if left_crate_tab:
+		left_crate_tab.pressed.connect(func() -> void: _set_left_container(ContainerType.GROUND_CRATE))
+	if left_backpack_tab:
+		left_backpack_tab.pressed.connect(func() -> void: _set_left_container(ContainerType.PILOT_BACKPACK))
+	if left_sled_tab:
+		left_sled_tab.pressed.connect(func() -> void: _set_left_container(ContainerType.SLED_CARGO_POD))
+	
+	# Right tab signals
+	if right_crate_tab:
+		right_crate_tab.pressed.connect(func() -> void: _set_right_container(ContainerType.GROUND_CRATE))
+	if right_backpack_tab:
+		right_backpack_tab.pressed.connect(func() -> void: _set_right_container(ContainerType.PILOT_BACKPACK))
+	if right_sled_tab:
+		right_sled_tab.pressed.connect(func() -> void: _set_right_container(ContainerType.SLED_CARGO_POD))
+
+func _init_tab_styles() -> void:
+	active_tab_style = StyleBoxFlat.new()
+	active_tab_style.bg_color = Color(0.2, 0.45, 0.75, 0.95)
+	active_tab_style.border_color = Color(0.5, 0.85, 1.0, 1.0)
+	active_tab_style.set_border_width_all(1)
+	active_tab_style.border_width_bottom = 2
+	active_tab_style.set_corner_radius_all(4)
+	
+	inactive_tab_style = StyleBoxFlat.new()
+	inactive_tab_style.bg_color = Color(0.12, 0.16, 0.22, 0.8)
+	inactive_tab_style.border_color = Color(0.25, 0.35, 0.45, 0.6)
+	inactive_tab_style.set_border_width_all(1)
+	inactive_tab_style.set_corner_radius_all(4)
 
 func _process(_delta: float) -> void:
 	if is_open and held_item and floating_cursor_ghost:
@@ -94,7 +133,6 @@ func _on_grid_cell_clicked(grid: HexGridControl, cell: Vector2i, button: int, is
 	
 	if button == MOUSE_BUTTON_LEFT:
 		if held_item:
-			# Target cell or hovered fallback
 			var target_cell: Vector2i = cell
 			if not grid.grid_inventory.can_place_item(held_item, target_cell, held_rotation_step):
 				if grid.grid_inventory.can_place_item(held_item, grid.hovered_cell, held_rotation_step):
@@ -132,7 +170,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.is_action_pressed(&"pilot_lean_left") or (event is InputEventKey and event.pressed and event.physical_keycode == KEY_TAB):
 			active_focus_panel = 1 - active_focus_panel
 			_update_panel_focus()
-			# Update preview on the newly focused grid
 			var active_grid: HexGridControl = left_grid_control if active_focus_panel == 0 else right_grid_control
 			if held_item and active_grid and active_grid.grid_inventory:
 				var is_valid: bool = active_grid.grid_inventory.can_place_item(held_item, active_grid.cursor_cell, held_rotation_step)
@@ -141,10 +178,10 @@ func _unhandled_input(event: InputEvent) -> void:
 func open_contextual_inventory() -> void:
 	_discover_scene_inventories()
 	
-	# Determine smart default panels
+	# Determine smart default panels with mutual exclusion
 	if crate_inventory:
 		left_container_type = ContainerType.GROUND_CRATE
-		right_container_type = ContainerType.SLED_CARGO_POD if sled_inventory else ContainerType.PILOT_BACKPACK
+		right_container_type = ContainerType.PILOT_BACKPACK if backpack_inventory else ContainerType.SLED_CARGO_POD
 	else:
 		left_container_type = ContainerType.PILOT_BACKPACK
 		right_container_type = ContainerType.SLED_CARGO_POD
@@ -177,7 +214,6 @@ func _discover_scene_inventories() -> void:
 	if pilot:
 		backpack_inventory = pilot.get_node_or_null("BackpackInventoryComponent") as HexInventoryComponent
 		
-		# Find nearest crate within 4.5m
 		var all_crates: Array[Node] = get_tree().root.find_children("*Crate*", "GroundCrate", true, false)
 		for c: Node in all_crates:
 			if c is Node3D and is_instance_valid(c):
@@ -189,18 +225,81 @@ func _discover_scene_inventories() -> void:
 	if not sled_nodes.is_empty() and is_instance_valid(sled_nodes[0]):
 		sled_inventory = sled_nodes[0].get_node_or_null("CenterOfMassComponent/CargoPodInventory") as HexInventoryComponent
 
+## Mutual exclusion setter for Left container
+func _set_left_container(type: ContainerType) -> void:
+	left_container_type = type
+	# If right panel currently has the same type, auto-shift right panel to an available alternate
+	if right_container_type == left_container_type:
+		for alt: int in [ContainerType.SLED_CARGO_POD, ContainerType.PILOT_BACKPACK, ContainerType.GROUND_CRATE]:
+			if alt != int(left_container_type):
+				right_container_type = alt as ContainerType
+				break
+	_refresh_container_panels()
+
+## Mutual exclusion setter for Right container
+func _set_right_container(type: ContainerType) -> void:
+	right_container_type = type
+	# If left panel currently has the same type, auto-shift left panel to an available alternate
+	if left_container_type == right_container_type:
+		for alt: int in [ContainerType.GROUND_CRATE, ContainerType.PILOT_BACKPACK, ContainerType.SLED_CARGO_POD]:
+			if alt != int(right_container_type):
+				left_container_type = alt as ContainerType
+				break
+	_refresh_container_panels()
+
 func _refresh_container_panels() -> void:
-	# Left container binding
+	# 1. Bind left container
 	var left_inv: HexInventoryComponent = _get_inventory_by_type(left_container_type)
 	left_grid_control.set_inventory(left_inv)
-	if left_tab_btn:
-		left_tab_btn.text = _get_type_title(left_container_type)
+	_update_load_label(left_load_label, left_inv, left_container_type)
 	
-	# Right container binding
+	# 2. Bind right container
 	var right_inv: HexInventoryComponent = _get_inventory_by_type(right_container_type)
 	right_grid_control.set_inventory(right_inv)
-	if right_tab_btn:
-		right_tab_btn.text = _get_type_title(right_container_type)
+	_update_load_label(right_load_label, right_inv, right_container_type)
+	
+	# 3. Update tab visual states & mutual exclusion visibility/disabled state
+	_update_tab_buttons()
+
+func _update_tab_buttons() -> void:
+	# Left tab styling
+	_apply_tab_style(left_crate_tab, left_container_type == ContainerType.GROUND_CRATE, crate_inventory != null and right_container_type != ContainerType.GROUND_CRATE)
+	_apply_tab_style(left_backpack_tab, left_container_type == ContainerType.PILOT_BACKPACK, backpack_inventory != null and right_container_type != ContainerType.PILOT_BACKPACK)
+	_apply_tab_style(left_sled_tab, left_container_type == ContainerType.SLED_CARGO_POD, sled_inventory != null and right_container_type != ContainerType.SLED_CARGO_POD)
+	
+	# Right tab styling
+	_apply_tab_style(right_crate_tab, right_container_type == ContainerType.GROUND_CRATE, crate_inventory != null and left_container_type != ContainerType.GROUND_CRATE)
+	_apply_tab_style(right_backpack_tab, right_container_type == ContainerType.PILOT_BACKPACK, backpack_inventory != null and left_container_type != ContainerType.PILOT_BACKPACK)
+	_apply_tab_style(right_sled_tab, right_container_type == ContainerType.SLED_CARGO_POD, sled_inventory != null and left_container_type != ContainerType.SLED_CARGO_POD)
+
+func _apply_tab_style(btn: Button, is_active: bool, is_available: bool) -> void:
+	if not btn:
+		return
+	btn.visible = is_available or is_active
+	btn.disabled = not is_available and not is_active
+	btn.add_theme_stylebox_override(&"normal", active_tab_style if is_active else inactive_tab_style)
+
+func _update_load_label(lbl: Label, inv: HexInventoryComponent, type: ContainerType) -> void:
+	if not lbl:
+		return
+	if not inv:
+		lbl.text = "NO CONTAINER ATTACHED"
+		lbl.add_theme_color_override(&"font_color", Color(0.6, 0.6, 0.6, 0.8))
+		return
+	
+	var mass: float = inv.get_total_items_mass()
+	var tier: StringName = inv.get_encumbrance_tier()
+	
+	match tier:
+		&"overburdened":
+			lbl.text = "Payload: %.1f kg [OVERBURDENED - High Tipping Risk]" % mass
+			lbl.add_theme_color_override(&"font_color", Color(1.0, 0.25, 0.2, 1.0))
+		&"encumbered":
+			lbl.text = "Payload: %.1f kg [HEAVY LOAD - Reduced Agility]" % mass
+			lbl.add_theme_color_override(&"font_color", Color(1.0, 0.75, 0.2, 1.0))
+		_:
+			lbl.text = "Payload: %.1f kg [NOMINAL LOAD]" % mass
+			lbl.add_theme_color_override(&"font_color", Color(0.3, 0.85, 0.4, 1.0))
 
 func _get_inventory_by_type(type: ContainerType) -> HexInventoryComponent:
 	match type:
@@ -208,21 +307,6 @@ func _get_inventory_by_type(type: ContainerType) -> HexInventoryComponent:
 		ContainerType.PILOT_BACKPACK: return backpack_inventory
 		ContainerType.SLED_CARGO_POD: return sled_inventory
 	return null
-
-func _get_type_title(type: ContainerType) -> String:
-	match type:
-		ContainerType.GROUND_CRATE: return "GROUND CRATE"
-		ContainerType.PILOT_BACKPACK: return "PILOT BACKPACK"
-		ContainerType.SLED_CARGO_POD: return "SLED CARGO POD"
-	return "CONTAINER"
-
-func _cycle_left_container() -> void:
-	left_container_type = (left_container_type + 1) % 3 as ContainerType
-	_refresh_container_panels()
-
-func _cycle_right_container() -> void:
-	right_container_type = (right_container_type + 1) % 3 as ContainerType
-	_refresh_container_panels()
 
 func _update_panel_focus() -> void:
 	left_grid_control.is_active_focus = (active_focus_panel == 0)
@@ -238,6 +322,7 @@ func _start_dragging(item: HexItemData, source_inv: HexInventoryComponent, sourc
 	source_inv.remove_item(item)
 	left_grid_control.queue_redraw()
 	right_grid_control.queue_redraw()
+	_refresh_container_panels()
 	_update_tooltip(held_item)
 
 func _rotate_held_item() -> void:
@@ -264,6 +349,7 @@ func _try_drop_item(grid: HexGridControl, cell: Vector2i) -> void:
 		right_grid_control.clear_custom_drag_preview()
 		left_grid_control.queue_redraw()
 		right_grid_control.queue_redraw()
+		_refresh_container_panels()
 		if floating_cursor_ghost:
 			floating_cursor_ghost.queue_redraw()
 		_update_tooltip(null)
@@ -288,6 +374,7 @@ func _quick_transfer_item(item: HexItemData, source_inv: HexInventoryComponent) 
 				destination.place_item(item, slot, rot)
 				left_grid_control.queue_redraw()
 				right_grid_control.queue_redraw()
+				_refresh_container_panels()
 				_update_tooltip(null)
 				return
 
@@ -300,6 +387,7 @@ func _cancel_drag() -> void:
 	right_grid_control.clear_custom_drag_preview()
 	left_grid_control.queue_redraw()
 	right_grid_control.queue_redraw()
+	_refresh_container_panels()
 	if floating_cursor_ghost:
 		floating_cursor_ghost.queue_redraw()
 	_update_tooltip(null)
@@ -312,4 +400,4 @@ func _update_tooltip(item: HexItemData) -> void:
 	else:
 		tooltip_name.text = "NO SELECTION"
 		tooltip_mass.text = "Mass: --"
-		tooltip_desc.text = "[A / LMB] Pick / Stamp\n[LB / RB / Q / E] Switch Panel\n[R / X] Rotate 60°\n[Shift+LMB / Y] Quick Loot"
+		tooltip_desc.text = "[A / LMB] Pick / Stamp\n[LB / RB] Switch Panel\n[R / X] Rotate 60°\n[Y / Shift+LMB] Quick Loot"

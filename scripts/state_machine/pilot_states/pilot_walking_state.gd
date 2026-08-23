@@ -26,11 +26,23 @@ func physics_update(delta: float) -> void:
 	if Input.is_action_just_pressed(&"pilot_melee_breach") and weapon_socket:
 		weapon_socket.trigger_attack()
 	
-	var input_dir: Vector2 = Input.get_vector(&"steer_left", &"steer_right", &"brake_reverse", &"accelerate")
-	var move_speed: float = 6.5
-	if Input.is_action_pressed(&"sprint"):
-		move_speed = 10.5
+	# Calculate dynamic backpack encumbrance
+	var backpack_mass: float = 0.0
+	var backpack: HexInventoryComponent = pilot.get_node_or_null("BackpackInventoryComponent") as HexInventoryComponent
+	if backpack:
+		backpack_mass = backpack.get_total_items_mass()
 	
+	var base_walk_speed: float = 6.0
+	if backpack_mass > 30.0:
+		var extra_mass: float = backpack_mass - 30.0
+		base_walk_speed = maxf(2.2, base_walk_speed - (extra_mass * 0.045))
+	
+	var move_speed: float = base_walk_speed
+	# Sprint allowed only if not overburdened (< 65kg backpack)
+	if Input.is_action_pressed(&"sprint") and backpack_mass < 65.0:
+		move_speed = base_walk_speed * 1.6
+	
+	var input_dir: Vector2 = Input.get_vector(&"steer_left", &"steer_right", &"brake_reverse", &"accelerate")
 	var move_vec: Vector3 = Vector3.ZERO
 	if input_dir.length() > 0.05:
 		var cam: Camera3D = pilot.get_viewport().get_camera_3d() if (pilot.is_inside_tree() and pilot.get_viewport()) else null
@@ -56,7 +68,6 @@ func physics_update(delta: float) -> void:
 		pilot.velocity.y -= 9.81 * delta
 	else:
 		pilot.velocity.y = 0.0
-		# Recharge jetpack while grounded
 		if jetpack:
 			jetpack.process_jetpack(delta, false, true, Vector3.ZERO)
 	

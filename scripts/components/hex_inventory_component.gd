@@ -27,16 +27,12 @@ func _ready() -> void:
 		container_mount = ContainerMountData.new()
 
 ## Checks if an item can be placed at a root axial coordinate with a given rotation
+## Note: Hard weight rejection is removed in favor of dynamic encumbrance physics!
 func can_place_item(item: HexItemData, root_coord: Vector2i, rotation_step: int = 0) -> bool:
 	if not item:
 		return false
 	if not container_mount:
 		container_mount = ContainerMountData.new()
-	
-	# Check weight capacity
-	var prospective_mass: float = get_total_items_mass() + item.mass_kg
-	if prospective_mass > container_mount.max_weight_capacity_kg:
-		return false
 	
 	var footprint: Array[Vector2i] = item.get_rotated_footprint(rotation_step)
 	for offset: Vector2i in footprint:
@@ -116,6 +112,19 @@ func get_total_items_mass() -> float:
 func get_total_composite_mass() -> float:
 	var tare: float = container_mount.tare_mass_kg if container_mount else 0.0
 	return tare + get_total_items_mass()
+
+## Returns encumbrance status ratio (1.0 = nominal rating)
+func get_encumbrance_ratio() -> float:
+	var nominal_cap: float = container_mount.max_weight_capacity_kg if container_mount else 100.0
+	return get_total_items_mass() / maxf(1.0, nominal_cap)
+
+func get_encumbrance_tier() -> StringName:
+	var ratio: float = get_encumbrance_ratio()
+	if ratio > 1.8:
+		return &"overburdened"
+	elif ratio > 1.0:
+		return &"encumbered"
+	return &"nominal"
 
 ## Converts an axial hex coordinate (q, r) to 2D Cartesian offset (X=right, Y=fore/aft)
 func axial_to_cartesian(coord: Vector2i) -> Vector2:

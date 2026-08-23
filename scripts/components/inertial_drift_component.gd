@@ -62,23 +62,22 @@ func update_physics(
 	
 	# 2. Heading and Steering Yaw Integration
 	var current_friction: Vector2 = _get_current_friction()
-	var effective_steer_speed: float = deg_to_rad(stats.steer_speed_deg_per_sec if stats else 8.5)
+	var effective_steer_speed: float = deg_to_rad(stats.steer_speed_deg_per_sec if stats else 12.0)
 	
 	if is_drifting and stats:
 		effective_steer_speed *= stats.drift_yaw_multiplier
 	
-	# Steering is more responsive on high-grip surfaces, less on ice
 	if runners:
 		effective_steer_speed *= runners.steering_bite_multiplier
 	
-	heading_angle_rad -= steer_input * effective_steer_speed * delta
-	target_body.rotation.y = heading_angle_rad
+	# Asymmetrical mass drag yaw bias (sled pulls toward heavy side)
+	var forward_velocity: float = velocity_3d.length()
+	var yaw_bias: float = (external_com_lateral_offset_m / 0.25) * deg_to_rad(3.5) * clampf(forward_velocity / 12.0, 0.0, 1.5)
 	
-	var forward_dir: Vector3 = -target_body.global_transform.basis.z.normalized()
-	var raw_right: Vector3 = target_body.global_transform.basis.x
-	var right_dir: Vector3 = Vector3(raw_right.x, 0.0, raw_right.z).normalized()
-	if right_dir.is_zero_approx():
-		right_dir = Vector3.RIGHT
+	heading_angle_rad -= (steer_input * effective_steer_speed + yaw_bias) * delta
+	
+	var forward_dir: Vector3 = Vector3(-sin(heading_angle_rad), 0.0, -cos(heading_angle_rad)).normalized()
+	var right_dir: Vector3 = Vector3(cos(heading_angle_rad), 0.0, -sin(heading_angle_rad)).normalized()
 	
 	# 3. Thrust Force Calculation
 	var thrust_force: Vector3 = Vector3.ZERO
@@ -116,7 +115,6 @@ func update_physics(
 	
 	horizontal_velocity += horizontal_accel * delta
 	
-	# Apply linear aerodynamic drag clamp
 	var max_speed: float = engine.top_speed_ms if engine else 32.0
 	if is_boosting:
 		max_speed *= 1.35
@@ -127,7 +125,6 @@ func update_physics(
 	var vertical_velocity_y: float = velocity_3d.y
 	if ground_raycast and ground_raycast.is_colliding():
 		vertical_velocity_y = 0.0
-		# Align with ground plane if applicable
 	else:
 		vertical_velocity_y -= GRAVITY * delta
 	vertical_velocity_y += (external_force.y / maxf(1.0, current_total_mass_kg)) * delta
@@ -137,8 +134,8 @@ func update_physics(
 	target_body.move_and_slide()
 	velocity_3d = target_body.velocity
 	
-	# 7. Roll Angle & Tipping Dynamics
-	_update_roll_dynamics(delta, lateral_speed, steer_input)
+	# 7. Roll Angle & Tipping Dynamics (Basis Transformation)
+	_update_roll_dynamics(delta, lateral_speed, steer_input, horizontal_velocity.length())
 	
 	# 8. Signals
 	var speed_kmh: float = horizontal_velocity.length() * 3.6
@@ -163,19 +160,28 @@ func _get_current_friction() -> Vector2:
 		return runners.get_friction_for_surface(current_surface)
 	return Vector2(0.75, 0.15)
 
-func _update_roll_dynamics(delta: float, lateral_speed: float, steer_input: float) -> void:
-	var centrifugal_roll: float = (lateral_speed * steer_input * 0.04)
-	var com_roll: float = external_com_lateral_offset_m * 0.15
-	var lean_stabilization: float = pilot_lean_axis * (deg_to_rad(12.0))
+func _update_roll_dynamics(delta: float, lateral_speed: float, steer_input: float, speed_mag: float) -> void:
+	# 1. Static gravity tilt from lateral COM offset (e.g. +0.15m offset yields ~16 deg lean)
+	var static_com_roll: float = (external_com_lateral_offset_m / 0.20) * deg_to_rad(20.0)
 	
-	var target_roll_rad: float = clampf(centrifugal_roll + com_roll - lean_stabilization, deg_to_rad(-45.0), deg_to_rad(45.0))
+	# 2. Dynamic centrifugal roll during turns
+	var centrifugal_roll: float = (lateral_speed * 0.05) + (steer_input * (speed_mag / 16.0) * deg_to_rad(14.0))
+	
+	# 3. Pilot counter-lean stabilization (Q / E)
+	var pilot_lean: float = pilot_lean_axis * deg_to_rad(18.0)
+	
+	var target_roll_rad: float = clampf(static_com_roll + centrifugal_roll - pilot_lean, deg_to_rad(-45.0), deg_to_rad(45.0))
 	var restore_speed: float = stats.roll_restoring_stiffness if stats else 4.5
 	roll_angle_rad = lerpf(roll_angle_rad, target_roll_rad, restore_speed * delta)
 	
-	target_body.rotation.z = roll_angle_rad
+	# Apply combined Heading (Y) and Roll (Z in local vehicle space) Basis to chassis
+	var heading_basis: Basis = Basis(Vector3.UP, heading_angle_rad)
+	var roll_basis: Basis = Basis(Vector3(0, 0, -1), roll_angle_rad)
+	target_body.transform.basis = heading_basis * roll_basis
+	
 	sled_roll_updated.emit(rad_to_deg(roll_angle_rad))
 	
-	var threshold_deg: float = stats.tipping_angle_threshold_deg if stats else 28.0
+	var threshold_deg: float = stats.tipping_angle_threshold_deg if stats else 24.0
 	var is_tipping_imminent: bool = absf(rad_to_deg(roll_angle_rad)) >= threshold_deg
 	if is_tipping_imminent:
 		GlobalEvents.emit_sled_tipping(true)

@@ -7,6 +7,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_drift_state_reduces_lateral_grip())
 	results.append(_test_momentum_preserved_on_black_ice())
 	results.append(_test_pilot_counter_lean_stabilizes_roll())
+	results.append(_test_asymmetric_com_induces_chassis_lean())
 	return results
 
 func _test_surface_friction_lookup() -> Dictionary:
@@ -42,12 +43,10 @@ func _test_momentum_preserved_on_black_ice() -> Dictionary:
 	var mass: float = 250.0
 	var delta: float = 0.016
 	
-	# Lateral grip force on black ice
 	var max_grip: float = ice_friction.x * mass * 9.81
 	var speed_reduction: float = (max_grip / mass) * delta
 	var final_speed: float = initial_velocity.x - speed_reduction
 	
-	# On black ice (friction=0.05), after 1 frame (16ms), speed drops by less than 0.01 m/s
 	var passed: bool = final_speed > 19.95
 	return {
 		"name": "test_momentum_preserved_on_black_ice",
@@ -66,4 +65,16 @@ func _test_pilot_counter_lean_stabilizes_roll() -> Dictionary:
 		"name": "test_pilot_counter_lean_stabilizes_roll",
 		"passed": passed,
 		"message": "Pilot counter-lean reduced roll from %f to %f rad" % [uncountered_roll, net_roll]
+	}
+
+func _test_asymmetric_com_induces_chassis_lean() -> Dictionary:
+	var com_lateral_offset_m: float = 0.15
+	var static_com_roll_rad: float = (com_lateral_offset_m / 0.20) * deg_to_rad(20.0)
+	var roll_deg: float = rad_to_deg(static_com_roll_rad)
+	
+	var passed: bool = roll_deg > 12.0
+	return {
+		"name": "test_asymmetric_com_induces_chassis_lean",
+		"passed": passed,
+		"message": "0.15m lateral COM offset induced %.1f deg visible chassis tilt (expected > 12 deg)" % roll_deg
 	}

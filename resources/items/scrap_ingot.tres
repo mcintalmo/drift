@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="HexItemData" load_steps=2 format=3 uid="uid://c1v9m8l4k2p7"]
+
+[ext_resource type="Script" path="res://scripts/resources/hex_item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+item_id = &"item_scrap_ingot"
+item_name = "Scrap Ingot"
+category = 0
+description = "Dense salvaged alloy block (1-hex)."
+mass_kg = 18.0
+is_stackable = false
+max_stack_size = 1
+hex_footprint = Array[Vector2i]([Vector2i(0, 0)])
+rotation_step = 0
+root_slot = Vector2i(0, 0)
+item_color = Color(0.9, 0.55, 0.2, 0.9)
+icon_path = ""

@@ -6,15 +6,18 @@ signal cell_hovered(cell: Vector2i)
 
 @export var cell_radius: float = 24.0
 @export var grid_inventory: HexInventoryComponent
+@export var is_active_focus: bool = false
 
 @export_group("Visual Styling")
 @export var cell_fill_color: Color = Color(0.12, 0.16, 0.2, 0.85)
 @export var cell_border_color: Color = Color(0.25, 0.35, 0.45, 0.9)
 @export var hover_highlight_color: Color = Color(0.3, 0.8, 1.0, 0.4)
+@export var focus_border_color: Color = Color(0.2, 0.8, 1.0, 0.9)
 @export var valid_drop_color: Color = Color(0.2, 0.9, 0.3, 0.5)
 @export var invalid_drop_color: Color = Color(0.9, 0.2, 0.2, 0.5)
 
 var hovered_cell: Vector2i = Vector2i(-999, -999)
+var cursor_cell: Vector2i = Vector2i(0, 0)
 var is_mouse_inside: bool = false
 
 # Ghost preview for dragged items
@@ -26,7 +29,8 @@ var is_preview_valid: bool = false
 var _on_inv_changed_callable: Callable
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(280, 240)
+	custom_minimum_size = Vector2(300, 260)
+	focus_mode = FOCUS_ALL
 	_on_inv_changed_callable = func(_it: Variant = null) -> void: queue_redraw()
 	
 	mouse_entered.connect(func() -> void: is_mouse_inside = true)
@@ -56,6 +60,7 @@ func _gui_input(event: InputEvent) -> void:
 		var cell: Vector2i = pixel_to_hex(local_pos)
 		if cell != hovered_cell:
 			hovered_cell = cell
+			cursor_cell = cell
 			cell_hovered.emit(cell)
 			queue_redraw()
 	
@@ -63,13 +68,42 @@ func _gui_input(event: InputEvent) -> void:
 		var mb: InputEventMouseButton = event as InputEventMouseButton
 		if mb.pressed:
 			var cell: Vector2i = pixel_to_hex(mb.position)
+			cursor_cell = cell
 			cell_clicked.emit(cell, mb.button_index, mb.shift_pressed)
+	
+	elif event is InputEventKey and event.pressed:
+		var dir: Vector2i = Vector2i.ZERO
+		if event.is_action_pressed(&"ui_right"):
+			dir = Vector2i(1, 0)
+		elif event.is_action_pressed(&"ui_left"):
+			dir = Vector2i(-1, 0)
+		elif event.is_action_pressed(&"ui_down"):
+			dir = Vector2i(0, 1)
+		elif event.is_action_pressed(&"ui_up"):
+			dir = Vector2i(0, -1)
+		
+		if dir != Vector2i.ZERO and grid_inventory:
+			var next_cell: Vector2i = cursor_cell + dir
+			if grid_inventory.available_slots.has(next_cell):
+				cursor_cell = next_cell
+				hovered_cell = next_cell
+				cell_hovered.emit(cursor_cell)
+				queue_redraw()
+				accept_event()
+		
+		elif event.is_action_pressed(&"ui_accept"):
+			cell_clicked.emit(cursor_cell, MOUSE_BUTTON_LEFT, false)
+			accept_event()
 
 func _draw() -> void:
 	if not grid_inventory:
 		return
 	
 	var grid_origin: Vector2 = size * 0.5
+	
+	# Draw active focus frame
+	if is_active_focus:
+		draw_rect(Rect2(Vector2.ZERO, size), focus_border_color, false, 2.0)
 	
 	# 1. Draw empty grid cells
 	for slot: Vector2i in grid_inventory.available_slots:
@@ -78,23 +112,21 @@ func _draw() -> void:
 		draw_colored_polygon(poly, cell_fill_color)
 		draw_polyline(poly, cell_border_color, 1.5, true)
 	
-	# 2. Draw placed items
-	var drawn_items: Array[HexItemData] = []
-	for item_id: StringName in grid_inventory.placed_items:
-		var item: HexItemData = grid_inventory.placed_items[item_id]
-		if not drawn_items.has(item):
-			drawn_items.append(item)
+	# 2. Draw placed items (Iterate full Array so multi-items of same type are drawn!)
+	for item: HexItemData in grid_inventory.get_all_placed_items():
+		if is_instance_valid(item):
 			_draw_item(item, grid_origin)
 	
-	# 3. Draw hover highlight
-	if is_mouse_inside and grid_inventory.available_slots.has(hovered_cell):
-		var hover_center: Vector2 = grid_origin + hex_to_pixel(hovered_cell)
+	# 3. Draw hover/cursor highlight
+	var active_slot: Vector2i = hovered_cell if is_mouse_inside else cursor_cell
+	if grid_inventory.available_slots.has(active_slot):
+		var hover_center: Vector2 = grid_origin + hex_to_pixel(active_slot)
 		var hover_poly: PackedVector2Array = get_hex_polygon(hover_center, cell_radius)
 		draw_colored_polygon(hover_poly, hover_highlight_color)
 		draw_polyline(hover_poly, Color(0.5, 0.9, 1.0, 1.0), 2.0, true)
 	
 	# 4. Draw drag ghost preview
-	if preview_item and is_mouse_inside and grid_inventory.available_slots.has(preview_root_cell):
+	if preview_item and grid_inventory.available_slots.has(preview_root_cell):
 		_draw_preview_ghost(grid_origin)
 
 func _draw_item(item: HexItemData, grid_origin: Vector2) -> void:
@@ -109,7 +141,7 @@ func _draw_item(item: HexItemData, grid_origin: Vector2) -> void:
 	
 	# Draw item name on root cell
 	var root_center: Vector2 = grid_origin + hex_to_pixel(item.root_slot)
-	draw_string(ThemeDB.fallback_font, root_center + Vector2(-18, 4), item.item_name.substr(0, 4), HORIZONTAL_ALIGNMENT_CENTER, 36, 11, Color.WHITE)
+	draw_string(ThemeDB.fallback_font, root_center + Vector2(-22, 4), item.item_name.substr(0, 5), HORIZONTAL_ALIGNMENT_CENTER, 44, 10, Color.WHITE)
 
 func _draw_preview_ghost(grid_origin: Vector2) -> void:
 	var ghost_color: Color = valid_drop_color if is_preview_valid else invalid_drop_color

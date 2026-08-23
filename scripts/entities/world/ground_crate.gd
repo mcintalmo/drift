@@ -8,6 +8,7 @@ signal lock_damaged(current_lock_hp: float)
 
 @export var is_locked: bool = true
 @export var lock_health: float = 60.0
+@export var crate_variant: int = 1
 
 @onready var inventory: HexInventoryComponent = $HexInventoryComponent
 @onready var hurtbox: HurtboxComponent = $HurtboxComponent
@@ -25,7 +26,7 @@ func _ready() -> void:
 		)
 		lock_health_component.died.connect(_on_lock_breached)
 	
-	_populate_default_loot()
+	_populate_loot()
 
 func _flash_damage() -> void:
 	if lock_mesh:
@@ -62,10 +63,21 @@ func _on_lock_breached() -> void:
 	crate_opened.emit()
 	GlobalEvents.emit_crate_breached(self)
 
-func _populate_default_loot() -> void:
-	if inventory:
-		var scrap_item: HexItemData = HexItemData.new()
-		scrap_item.item_id = &"item_scrap_metal"
-		scrap_item.mass_kg = 8.0
-		scrap_item.hex_footprint = [Vector2i(0, 0)]
-		inventory.place_item(scrap_item, Vector2i(0, 0))
+func _populate_loot() -> void:
+	if not inventory:
+		return
+	
+	if crate_variant == 1:
+		var scrap: HexItemData = preload("res://resources/items/scrap_ingot.tres").duplicate()
+		var fuel: HexItemData = preload("res://resources/items/dual_fuel_rod.tres").duplicate()
+		var boom: HexItemData = preload("res://resources/items/plasma_boomerang.tres").duplicate()
+		
+		inventory.place_item(scrap, Vector2i(0, 0))
+		inventory.place_item(fuel, Vector2i(1, -1))
+		inventory.place_item(boom, Vector2i(-1, 0))
+	else:
+		var steel: HexItemData = preload("res://resources/items/steel_rail_bar.tres").duplicate()
+		var core: HexItemData = preload("res://resources/items/heavy_reactor_core.tres").duplicate()
+		
+		inventory.place_item(steel, Vector2i(0, -1))
+		inventory.place_item(core, Vector2i(-1, 1))

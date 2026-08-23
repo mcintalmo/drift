@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="HexItemData" load_steps=2 format=3 uid="uid://g5n2m7v8k1p4"]
+
+[ext_resource type="Script" path="res://scripts/resources/hex_item_data.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+item_id = &"item_heavy_reactor_core"
+item_name = "Heavy Core"
+category = 2
+description = "Massive 110kg thermoelectric reactor module (4-hex cluster)."
+mass_kg = 110.0
+is_stackable = false
+max_stack_size = 1
+hex_footprint = Array[Vector2i]([Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)])
+rotation_step = 0
+root_slot = Vector2i(0, 0)
+item_color = Color(0.95, 0.85, 0.15, 0.95)
+icon_path = ""

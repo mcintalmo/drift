@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://b8m2n4lax1v3"]
+[gd_scene load_steps=7 format=3 uid="uid://b8m2n4lax1v3"]
 
 [ext_resource type="Script" path="res://scripts/ui/hex_inventory_ui.gd" id="1_inv_ui"]
 [ext_resource type="Script" path="res://scripts/ui/hex_grid_control.gd" id="2_grid"]
@@ -17,6 +17,18 @@ corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 shadow_color = Color(0, 0, 0, 0.5)
 shadow_size = 12
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab_btn"]
+bg_color = Color(0.15, 0.22, 0.3, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.65, 0.9, 0.8)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tooltip"]
 bg_color = Color(0.12, 0.16, 0.22, 0.9)
@@ -58,90 +70,117 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -440.0
-offset_top = -220.0
-offset_right = 440.0
-offset_bottom = 220.0
+offset_left = -480.0
+offset_top = -240.0
+offset_right = 480.0
+offset_bottom = 240.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_modal_frame")
 
 [node name="MarginContainer" type="MarginContainer" parent="RootControl/PanelContainer"]
 layout_mode = 2
-theme_override_constants/margin_left = 20
-theme_override_constants/margin_top = 20
-theme_override_constants/margin_right = 20
-theme_override_constants/margin_bottom = 20
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 16
 
-[node name="HBoxContainer" type="HBoxContainer" parent="RootControl/PanelContainer/MarginContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="RootControl/PanelContainer/MarginContainer"]
 layout_mode = 2
-theme_override_constants/separation = 24
+theme_override_constants/separation = 10
 
-[node name="LeftContainer" type="VBoxContainer" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer"]
+[node name="HeaderBar" type="HBoxContainer" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer"]
 layout_mode = 2
-size_flags_horizontal = 3
 theme_override_constants/separation = 12
 
-[node name="TitleLabel" type="Label" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer/LeftContainer"]
+[node name="TitleLabel" type="Label" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HeaderBar"]
 layout_mode = 2
-text = "GROUND CRATE"
+size_flags_horizontal = 3
+text = "SPATIAL CARGO MANIFEST"
 horizontal_alignment = 1
 
-[node name="HexGridControl" type="Control" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer/LeftContainer"]
+[node name="HBoxContainer" type="HBoxContainer" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 20
+
+[node name="LeftContainer" type="VBoxContainer" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="Header" type="HBoxContainer" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer"]
+layout_mode = 2
+
+[node name="TabButton" type="Button" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/Header"]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/normal = SubResource("StyleBoxFlat_tab_btn")
+text = "GROUND CRATE [Q]"
+
+[node name="HexGridControl" type="Control" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer"]
 layout_mode = 2
 size_flags_vertical = 3
 script = ExtResource("2_grid")
 
-[node name="CenterPanel" type="VBoxContainer" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer"]
-custom_minimum_size = Vector2(200, 0)
+[node name="CenterPanel" type="VBoxContainer" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer"]
+custom_minimum_size = Vector2(210, 0)
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 8
 
-[node name="BalanceTitle" type="Label" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer/CenterPanel"]
+[node name="BalanceTitle" type="Label" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel"]
 layout_mode = 2
-text = "CENTER OF MASS"
+text = "SLED EQUILIBRIUM"
 horizontal_alignment = 1
 
-[node name="COMVisualizerWidget" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer/CenterPanel" instance=ExtResource("3_com")]
+[node name="COMVisualizerWidget" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel" instance=ExtResource("3_com")]
 layout_mode = 2
 
-[node name="TooltipPanel" type="PanelContainer" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer/CenterPanel"]
+[node name="TooltipPanel" type="PanelContainer" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel"]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_tooltip")
 
-[node name="VBoxContainer" type="VBoxContainer" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer/CenterPanel/TooltipPanel"]
+[node name="VBoxContainer" type="VBoxContainer" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/TooltipPanel"]
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="ItemNameLabel" type="Label" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer"]
+[node name="ItemNameLabel" type="Label" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer"]
 layout_mode = 2
 text = "NO SELECTION"
 horizontal_alignment = 1
 
-[node name="ItemMassLabel" type="Label" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer"]
+[node name="ItemMassLabel" type="Label" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer"]
 layout_mode = 2
 text = "Mass: --"
 horizontal_alignment = 1
 
-[node name="ItemDescLabel" type="Label" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer"]
+[node name="ItemDescLabel" type="Label" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer"]
 layout_mode = 2
 size_flags_vertical = 3
-text = "Click to drag.
-[R] / [RMB] to rotate 60°."
+text = "[A / LMB] Pick / Stamp
+[LB / RB] Switch Panel
+[R / X] Rotate 60°
+[Y / Shift+LMB] Quick Loot"
 autowrap_mode = 2
 
-[node name="RightContainer" type="VBoxContainer" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer"]
+[node name="RightContainer" type="VBoxContainer" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 12
+theme_override_constants/separation = 8
 
-[node name="TitleLabel" type="Label" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer/RightContainer"]
+[node name="Header" type="HBoxContainer" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer"]
 layout_mode = 2
-text = "SLED CARGO POD"
-horizontal_alignment = 1
 
-[node name="HexGridControl" type="Control" parent="RootControl/PanelContainer/MarginContainer/HBoxContainer/RightContainer"]
+[node name="TabButton" type="Button" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/Header"]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/normal = SubResource("StyleBoxFlat_tab_btn")
+text = "SLED CARGO POD [E]"
+
+[node name="HexGridControl" type="Control" parent="RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer"]
 layout_mode = 2
 size_flags_vertical = 3
 script = ExtResource("2_grid")

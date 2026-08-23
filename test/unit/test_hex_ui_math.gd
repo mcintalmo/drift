@@ -12,6 +12,8 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_six_step_rotation_closure())
 	results.append(_test_hex_polygon_vertices_count())
 	results.append(_test_quick_transfer_search())
+	results.append(_test_multiple_identical_items_preserved())
+	results.append(_test_heavy_cargo_com_shift())
 	return results
 
 func _test_axial_to_pixel_roundtrip() -> Dictionary:
@@ -110,7 +112,7 @@ func _test_quick_transfer_search() -> Dictionary:
 		if transferred:
 			break
 	
-	var passed: bool = transferred and target_inv.placed_items.has(&"test_bar") and not source_inv.placed_items.has(&"test_bar")
+	var passed: bool = transferred and target_inv.get_all_placed_items().has(item) and not source_inv.get_all_placed_items().has(item)
 	
 	source_inv.free()
 	target_inv.free()
@@ -119,4 +121,58 @@ func _test_quick_transfer_search() -> Dictionary:
 		"name": "test_quick_transfer_search",
 		"passed": passed,
 		"message": "Quick transfer algorithm placed item into target container across 6-rotation search"
+	}
+
+func _test_multiple_identical_items_preserved() -> Dictionary:
+	var inv: HexInventoryComponent = HexInventoryComponent.new()
+	var mount: ContainerMountData = ContainerMountData.new()
+	mount.slot_layout = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0)]
+	inv.container_mount = mount
+	
+	var scrap1: HexItemData = HexItemData.new()
+	scrap1.item_id = &"item_scrap_metal"
+	scrap1.hex_footprint = [Vector2i(0, 0)]
+	scrap1.mass_kg = 15.0
+	
+	var scrap2: HexItemData = HexItemData.new()
+	scrap2.item_id = &"item_scrap_metal" # Identical item_id
+	scrap2.hex_footprint = [Vector2i(0, 0)]
+	scrap2.mass_kg = 15.0
+	
+	inv.place_item(scrap1, Vector2i(0, 0))
+	inv.place_item(scrap2, Vector2i(1, 0))
+	
+	var all_items: Array[HexItemData] = inv.get_all_placed_items()
+	var passed: bool = (all_items.size() == 2 and all_items.has(scrap1) and all_items.has(scrap2))
+	
+	inv.free()
+	return {
+		"name": "test_multiple_identical_items_preserved",
+		"passed": passed,
+		"message": "Both scrap items with identical item_id are preserved in get_all_placed_items"
+	}
+
+func _test_heavy_cargo_com_shift() -> Dictionary:
+	var inv: HexInventoryComponent = HexInventoryComponent.new()
+	var mount: ContainerMountData = ContainerMountData.new()
+	mount.tare_mass_kg = 10.0
+	mount.slot_layout = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)]
+	inv.container_mount = mount
+	
+	# Place 65kg heavy plasma boomerang on the right side at (2, 0)
+	var boom: HexItemData = HexItemData.new()
+	boom.item_id = &"heavy_boom"
+	boom.mass_kg = 65.0
+	boom.hex_footprint = [Vector2i(0, 0)]
+	inv.place_item(boom, Vector2i(2, 0))
+	
+	var com: Vector2 = inv.get_com_offset_2d()
+	# Expect positive lateral X offset
+	var passed: bool = com.x > 0.4
+	
+	inv.free()
+	return {
+		"name": "test_heavy_cargo_com_shift",
+		"passed": passed,
+		"message": "65kg heavy cargo shifted container COM lateral offset to +%.3fm" % com.x
 	}

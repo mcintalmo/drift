@@ -1,9 +1,8 @@
 class_name HexGridControl
 extends Control
 
-signal cell_clicked(cell: Vector2i, mouse_button: int)
+signal cell_clicked(cell: Vector2i, mouse_button: int, is_shift: bool)
 signal cell_hovered(cell: Vector2i)
-signal item_picked(item: HexItemData, source_slot: Vector2i, is_quick_transfer: bool)
 
 @export var cell_radius: float = 24.0
 @export var grid_inventory: HexInventoryComponent
@@ -57,12 +56,7 @@ func _gui_input(event: InputEvent) -> void:
 		var mb: InputEventMouseButton = event as InputEventMouseButton
 		if mb.pressed:
 			var cell: Vector2i = pixel_to_hex(mb.position)
-			cell_clicked.emit(cell, mb.button_index)
-			
-			if mb.button_index == MOUSE_BUTTON_LEFT and grid_inventory:
-				var item: HexItemData = grid_inventory.get_item_at(cell)
-				if item:
-					item_picked.emit(item, cell, mb.shift_pressed)
+			cell_clicked.emit(cell, mb.button_index, mb.shift_pressed)
 
 func _draw() -> void:
 	if not grid_inventory:

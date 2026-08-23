@@ -53,17 +53,8 @@ func _on_draw_floating_ghost() -> void:
 		floating_cursor_ghost.draw_polyline(poly, Color(1, 1, 1, 0.8), 1.5, true)
 
 func _setup_grid_listeners(grid: HexGridControl) -> void:
-	grid.item_picked.connect(func(item: HexItemData, slot: Vector2i, is_quick_transfer: bool) -> void:
-		if is_quick_transfer:
-			_quick_transfer_item(item, grid.grid_inventory)
-		else:
-			_start_dragging(item, grid.grid_inventory, slot)
-	)
-	grid.cell_clicked.connect(func(cell: Vector2i, button: int) -> void:
-		if button == MOUSE_BUTTON_LEFT and held_item:
-			_try_drop_item(grid, cell)
-		elif button == MOUSE_BUTTON_RIGHT and held_item:
-			_rotate_held_item()
+	grid.cell_clicked.connect(func(cell: Vector2i, button: int, is_shift: bool) -> void:
+		_on_grid_cell_clicked(grid, cell, button, is_shift)
 	)
 	grid.cell_hovered.connect(func(cell: Vector2i) -> void:
 		if held_item and grid.grid_inventory:
@@ -73,6 +64,25 @@ func _setup_grid_listeners(grid: HexGridControl) -> void:
 			var item: HexItemData = grid.grid_inventory.get_item_at(cell)
 			_update_tooltip(item)
 	)
+
+func _on_grid_cell_clicked(grid: HexGridControl, cell: Vector2i, button: int, is_shift: bool) -> void:
+	if not grid or not grid.grid_inventory:
+		return
+	
+	if button == MOUSE_BUTTON_RIGHT and held_item:
+		_rotate_held_item()
+		return
+	
+	if button == MOUSE_BUTTON_LEFT:
+		if held_item:
+			_try_drop_item(grid, cell)
+		else:
+			var item: HexItemData = grid.grid_inventory.get_item_at(cell)
+			if item:
+				if is_shift:
+					_quick_transfer_item(item, grid.grid_inventory)
+				else:
+					_start_dragging(item, grid.grid_inventory, cell)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"pause_inventory") or event.is_action_pressed(&"ui_cancel"):
@@ -143,6 +153,8 @@ func close_inventory() -> void:
 	root_control.visible = false
 	left_grid_control.clear_custom_drag_preview()
 	right_grid_control.clear_custom_drag_preview()
+	if floating_cursor_ghost:
+		floating_cursor_ghost.queue_redraw()
 
 func _start_dragging(item: HexItemData, source_inv: HexInventoryComponent, source_slot: Vector2i) -> void:
 	held_item = item
@@ -168,10 +180,14 @@ func _try_drop_item(grid: HexGridControl, cell: Vector2i) -> void:
 		return
 	
 	if grid.grid_inventory.can_place_item(held_item, cell, held_rotation_step):
-		grid.grid_inventory.place_item(held_item, cell, held_rotation_step)
+		var dropped_item: HexItemData = held_item
+		var rot: int = held_rotation_step
 		held_item = null
 		source_inv_for_drag = null
+		grid.grid_inventory.place_item(dropped_item, cell, rot)
 		grid.clear_custom_drag_preview()
+		if floating_cursor_ghost:
+			floating_cursor_ghost.queue_redraw()
 		_update_tooltip(null)
 	else:
 		# Invalid drop target
@@ -203,6 +219,8 @@ func _cancel_drag() -> void:
 	source_inv_for_drag = null
 	left_grid_control.clear_custom_drag_preview()
 	right_grid_control.clear_custom_drag_preview()
+	if floating_cursor_ghost:
+		floating_cursor_ghost.queue_redraw()
 	_update_tooltip(null)
 
 func _update_tooltip(item: HexItemData) -> void:

@@ -62,7 +62,8 @@ func update_physics(
 	
 	# 2. Heading and Steering Yaw Integration
 	var current_friction: Vector2 = _get_current_friction()
-	var effective_steer_speed: float = deg_to_rad(stats.steer_speed_deg_per_sec if stats else 12.0)
+	var base_steer_speed: float = deg_to_rad(stats.steer_speed_deg_per_sec if stats else 95.0)
+	var effective_steer_speed: float = base_steer_speed
 	
 	if is_drifting and stats:
 		effective_steer_speed *= stats.drift_yaw_multiplier
@@ -97,7 +98,7 @@ func update_physics(
 	var lateral_speed: float = horizontal_velocity.dot(right_dir)
 	
 	# Longitudinal rolling drag
-	var longitudinal_drag_force: Vector3 = -forward_dir * (forward_speed * current_friction.y * 12.0)
+	var longitudinal_drag_force: Vector3 = -forward_dir * (forward_speed * current_friction.y * 30.0)
 	
 	# Lateral slip friction
 	var lateral_friction_coeff: float = current_friction.x
@@ -115,7 +116,12 @@ func update_physics(
 	
 	horizontal_velocity += horizontal_accel * delta
 	
-	var max_speed: float = engine.top_speed_ms if engine else 32.0
+	# Coasting deceleration when no throttle is pressed
+	if is_zero_approx(throttle_input):
+		var coast_friction: float = current_friction.y * 2.5
+		horizontal_velocity = horizontal_velocity.move_toward(Vector3.ZERO, coast_friction * GRAVITY * delta)
+	
+	var max_speed: float = engine.top_speed_ms if engine else 38.0
 	if is_boosting:
 		max_speed *= 1.35
 	if horizontal_velocity.length() > max_speed:
@@ -161,7 +167,7 @@ func _get_current_friction() -> Vector2:
 	return Vector2(0.75, 0.15)
 
 func _update_roll_dynamics(delta: float, lateral_speed: float, steer_input: float, speed_mag: float) -> void:
-	# 1. Static gravity tilt from lateral COM offset (e.g. +0.15m offset yields ~16 deg lean)
+	# 1. Static gravity tilt from lateral COM offset
 	var static_com_roll: float = (external_com_lateral_offset_m / 0.20) * deg_to_rad(20.0)
 	
 	# 2. Dynamic centrifugal roll during turns
@@ -171,7 +177,7 @@ func _update_roll_dynamics(delta: float, lateral_speed: float, steer_input: floa
 	var pilot_lean: float = pilot_lean_axis * deg_to_rad(18.0)
 	
 	var target_roll_rad: float = clampf(static_com_roll + centrifugal_roll - pilot_lean, deg_to_rad(-45.0), deg_to_rad(45.0))
-	var restore_speed: float = stats.roll_restoring_stiffness if stats else 4.5
+	var restore_speed: float = stats.roll_restoring_stiffness if stats else 6.0
 	roll_angle_rad = lerpf(roll_angle_rad, target_roll_rad, restore_speed * delta)
 	
 	# Apply combined Heading (Y) and Roll (Z in local vehicle space) Basis to chassis

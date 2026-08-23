@@ -6,10 +6,10 @@
 script = ExtResource("1_engine")
 engine_id = &"standard_engine"
 engine_name = "Standard Kerosene Thruster"
-max_forward_thrust = 38.0
-max_reverse_thrust = 14.0
-boost_multiplier = 1.65
-top_speed_ms = 32.0
+max_forward_thrust = 4500.0
+max_reverse_thrust = 2400.0
+boost_multiplier = 1.75
+top_speed_ms = 38.0
 fuel_burn_rate_per_sec = 0.8
 boost_fuel_multiplier = 2.5
 smog_emission_rate = 1.0

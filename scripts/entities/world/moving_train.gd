@@ -61,7 +61,7 @@ func _physics_process(delta: float) -> void:
 	# 1. Preparation Delay in Entrance Cave
 	if delay_timer > 0.0:
 		delay_timer -= delta
-		_update_car_positions(delta) # Keep all cars correctly positioned during delay
+		_update_car_positions(delta)
 		if delay_timer <= 0.0:
 			has_started = true
 			train_started_moving.emit()
@@ -117,13 +117,11 @@ func _update_car_positions(_delta: float) -> void:
 			# Positioned backwards along tangent inside the entrance cave
 			pos_3d = start_pt + (start_dir * target_s)
 			dir_3d = start_dir
-			car.visible = (target_s >= -3.5) # Emerge smoothly from cavern mouth
 		elif target_s > total_track_length_m:
 			# Positioned forward along tangent inside the exit tunnel
 			var over_s: float = target_s - total_track_length_m
 			pos_3d = end_pt + (end_dir * over_s)
 			dir_3d = end_dir
-			car.visible = (over_s <= 3.5) # Disappear smoothly into exit tunnel
 		else:
 			# Along 3D Curve Spline on track
 			pos_3d = curve_3d.sample_baked(target_s)
@@ -132,10 +130,13 @@ func _update_car_positions(_delta: float) -> void:
 			dir_3d = (next_pos - pos_3d).normalized()
 			if dir_3d.length_squared() < 0.01:
 				dir_3d = start_dir
-			car.visible = true
 			
 		var rot_y: float = atan2(dir_3d.x, dir_3d.z)
 		var pitch_x: float = -asin(clampf(dir_3d.y, -0.9, 0.9))
+		
+		var is_car_active: bool = (target_s >= -3.5) and (target_s <= total_track_length_m + 3.5)
+		car.visible = is_car_active
+		car.process_mode = Node.PROCESS_MODE_INHERIT if is_car_active else Node.PROCESS_MODE_DISABLED
 		
 		if car.is_inside_tree():
 			car.global_position = pos_3d

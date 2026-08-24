@@ -34,7 +34,7 @@ var is_coasting: bool = false
 @onready var lock_vis: MeshInstance3D = get_node_or_null("VisualModel/MagneticLock") as MeshInstance3D
 
 func _ready() -> void:
-	sync_to_physics = true
+	sync_to_physics = false
 	
 	# Setup Coupler Health
 	if coupler_health_comp:

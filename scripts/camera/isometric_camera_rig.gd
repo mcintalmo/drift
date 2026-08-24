@@ -16,7 +16,7 @@ const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 
 @export_group("Terrain & Prop See-Through Occlusion")
 @export var is_terrain_see_through_enabled: bool = true
-@export var occluded_transparency_alpha: float = 0.28
+@export var occluded_transparency_alpha: float = 0.18
 @export var fade_in_speed: float = 10.0
 @export var fade_out_speed: float = 5.0
 @export var min_occlusion_clearance_y_m: float = 0.35
@@ -33,8 +33,8 @@ const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 var _current_trauma: float = 0.0
 var _shake_time: float = 0.0
 
-# Tracked occluder materials: StandardMaterial3D -> float (current_alpha)
-var _occluded_materials: Dictionary = {}
+# Tracked occluder meshes: MeshInstance3D -> { "material": StandardMaterial3D, "proxy": MeshInstance3D }
+var _occluded_meshes: Dictionary = {}
 
 func _ready() -> void:
 	_apply_isometric_rotation()
@@ -78,7 +78,7 @@ func _physics_process(delta: float) -> void:
 	if is_terrain_see_through_enabled and target_node and camera_3d:
 		_update_terrain_occlusion(delta)
 
-## Multi-piercing line-of-sight raycasting strictly targeted on sled hull points with solid shadow preservation
+## Line-of-sight raycasting with shadow-proxy preservation and smooth non-dithered alpha transparency
 func _update_terrain_occlusion(delta: float) -> void:
 	var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	if not space_state:
@@ -92,23 +92,21 @@ func _update_terrain_occlusion(delta: float) -> void:
 	if cam_to_target_dist < 1.0:
 		return
 	
-	# Compute sled local basis vectors (strictly bounded to physical vehicle chassis extents)
 	var sled_basis: Basis = target_node.global_transform.basis
 	var sled_forward: Vector3 = -sled_basis.z.normalized()
 	var sled_right: Vector3 = sled_basis.x.normalized()
 	
-	# Ray targets are strictly placed ON the sled's physical hull bounds (never outside in adjacent walls)
+	# Ray targets strictly placed ON the sled's physical hull bounds
 	var ray_targets: Array[Dictionary] = [
 		{"pos": target_center, "weight": 1.0}, # Direct central chassis core
 		{"pos": target_center + sled_forward * 0.7, "weight": 0.90}, # Sled nose
 		{"pos": target_center - sled_forward * 0.7, "weight": 0.90}, # Sled tail
 		{"pos": target_center + sled_right * 0.35, "weight": 0.85}, # Right rail
 		{"pos": target_center - sled_right * 0.35, "weight": 0.85}, # Left rail
-		{"pos": target_center + Vector3(0, 0.45, 0), "weight": 0.90} # Cabin / Pilot height
+		{"pos": target_center + Vector3(0, 0.45, 0), "weight": 0.90} # Pilot cabin height
 	]
 	
-	# Map to aggregate maximum occlusion weight per material: StandardMaterial3D -> max_weight
-	var active_materials_weight: Dictionary = {}
+	var active_mesh_weights: Dictionary = {} # MeshInstance3D -> max_weight
 	
 	var base_exclude: Array[RID] = []
 	if target_node is CollisionObject3D:
@@ -119,7 +117,6 @@ func _update_terrain_occlusion(delta: float) -> void:
 		var ray_weight: float = entry["weight"]
 		var ray_dist: float = cam_pos.distance_to(ray_dest)
 		
-		# Piercing multi-hit raycast strictly along this line of sight to the sled body
 		var exclude_list: Array[RID] = base_exclude.duplicate()
 		
 		for _hit_step in range(8):
@@ -147,37 +144,61 @@ func _update_terrain_occlusion(delta: float) -> void:
 			if hit_pos.y <= sled_floor_y + 0.15:
 				continue
 			
-			# 3. Must be situated in the foreground between camera and target (at least 1.6m in front of vehicle)
+			# 3. Must be situated in the foreground between camera and target
 			if hit_dist < (ray_dist - 1.6):
 				if collider is Node:
-					var mats: Array[StandardMaterial3D] = []
-					_collect_mesh_materials(collider as Node, mats)
-					for m: StandardMaterial3D in mats:
-						var prev_w: float = active_materials_weight.get(m, 0.0)
-						active_materials_weight[m] = maxf(prev_w, ray_weight)
+					var meshes: Array[MeshInstance3D] = []
+					_collect_mesh_instances(collider as Node, meshes)
+					for mi: MeshInstance3D in meshes:
+						var prev_w: float = active_mesh_weights.get(mi, 0.0)
+						active_mesh_weights[mi] = maxf(prev_w, ray_weight)
 			else:
 				break
 	
-	# Register newly discovered occluding materials with ALPHA_HASH + DEPTH_DRAW_ALWAYS to preserve 100% full 3D shadow map casting
-	for mat: StandardMaterial3D in active_materials_weight:
-		if not _occluded_materials.has(mat):
-			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_HASH # Screen-door dither transparency preserves solid shadows!
-			mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS # Guaranteed depth and shadow map rendering
-			_occluded_materials[mat] = 1.0
+	# Register newly discovered occluding meshes with dedicated SHADOWS_ONLY shadow proxies
+	for mi: MeshInstance3D in active_mesh_weights:
+		if not is_instance_valid(mi):
+			continue
+		if not _occluded_meshes.has(mi):
+			var mat: StandardMaterial3D = _get_or_create_standard_material(mi)
+			if mat:
+				# Spawn dedicated shadow proxy to guarantee 100% solid shadow casting
+				var shadow_proxy: MeshInstance3D = MeshInstance3D.new()
+				shadow_proxy.name = "OcclusionShadowProxy"
+				shadow_proxy.mesh = mi.mesh
+				shadow_proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+				mi.add_child(shadow_proxy)
+				
+				# Configure main visual mesh to clean smooth alpha without dither noise
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				
+				_occluded_meshes[mi] = {
+					"material": mat,
+					"proxy": shadow_proxy
+				}
 	
-	# Smoothly interpolate alpha based on proximity weight
-	var to_remove: Array[StandardMaterial3D] = []
-	for mat: StandardMaterial3D in _occluded_materials:
-		if not is_instance_valid(mat):
-			to_remove.append(mat)
+	# Smoothly interpolate alpha for all tracked meshes
+	var to_remove: Array[MeshInstance3D] = []
+	for mi: MeshInstance3D in _occluded_meshes:
+		if not is_instance_valid(mi):
+			to_remove.append(mi)
 			continue
 			
-		var is_occluding: bool = active_materials_weight.has(mat)
+		var data: Dictionary = _occluded_meshes[mi]
+		var mat: StandardMaterial3D = data.get("material", null)
+		var proxy: MeshInstance3D = data.get("proxy", null)
+		
+		if not mat or not is_instance_valid(mat):
+			to_remove.append(mi)
+			continue
+			
+		var is_occluding: bool = active_mesh_weights.has(mi)
 		var target_alpha: float = 1.0
 		var speed: float = fade_out_speed
 		
 		if is_occluding:
-			var weight: float = active_materials_weight[mat]
+			var weight: float = active_mesh_weights[mi]
 			target_alpha = lerpf(1.0, occluded_transparency_alpha, weight)
 			speed = fade_in_speed
 			
@@ -185,34 +206,38 @@ func _update_terrain_occlusion(delta: float) -> void:
 		var new_a: float = move_toward(current_a, target_alpha, speed * delta)
 		mat.albedo_color.a = new_a
 		
+		# Fully restored back to 1.0 -> clean up shadow proxy and restore standard rendering
 		if not is_occluding and new_a >= 0.99:
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
-			mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY
 			mat.albedo_color.a = 1.0
-			to_remove.append(mat)
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			if proxy and is_instance_valid(proxy):
+				proxy.queue_free()
+			to_remove.append(mi)
 			
-	for mat: StandardMaterial3D in to_remove:
-		_occluded_materials.erase(mat)
+	for mi: MeshInstance3D in to_remove:
+		_occluded_meshes.erase(mi)
 
-func _collect_mesh_materials(node: Node, out_materials: Array[StandardMaterial3D]) -> void:
-	var mesh_instances: Array[MeshInstance3D] = []
-	if node is MeshInstance3D:
-		mesh_instances.append(node as MeshInstance3D)
+func _collect_mesh_instances(node: Node, out_meshes: Array[MeshInstance3D]) -> void:
+	if node is MeshInstance3D and node.name != "OcclusionShadowProxy":
+		if not out_meshes.has(node as MeshInstance3D):
+			out_meshes.append(node as MeshInstance3D)
 	else:
 		for child in node.get_children():
-			if child is MeshInstance3D:
-				mesh_instances.append(child as MeshInstance3D)
+			if child is MeshInstance3D and child.name != "OcclusionShadowProxy":
+				if not out_meshes.has(child as MeshInstance3D):
+					out_meshes.append(child as MeshInstance3D)
 		if node.get_parent() is Node3D:
 			for sibling in node.get_parent().get_children():
-				if sibling is MeshInstance3D:
-					mesh_instances.append(sibling as MeshInstance3D)
-	
-	for mi: MeshInstance3D in mesh_instances:
-		var mat: Material = mi.material_override
-		if not mat and mi.mesh:
-			mat = mi.mesh.surface_get_material(0)
-		if mat is StandardMaterial3D and not out_materials.has(mat as StandardMaterial3D):
-			out_materials.append(mat as StandardMaterial3D)
+				if sibling is MeshInstance3D and sibling.name != "OcclusionShadowProxy":
+					if not out_meshes.has(sibling as MeshInstance3D):
+						out_meshes.append(sibling as MeshInstance3D)
+
+func _get_or_create_standard_material(mi: MeshInstance3D) -> StandardMaterial3D:
+	var mat: Material = mi.material_override
+	if not mat and mi.mesh:
+		mat = mi.mesh.surface_get_material(0)
+	return mat as StandardMaterial3D if mat is StandardMaterial3D else null
 
 func add_trauma(amount: float) -> void:
 	_current_trauma = clampf(_current_trauma + amount, 0.0, 1.0)

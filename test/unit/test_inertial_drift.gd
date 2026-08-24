@@ -8,6 +8,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_momentum_preserved_on_black_ice())
 	results.append(_test_pilot_counter_lean_stabilizes_roll())
 	results.append(_test_asymmetric_com_induces_chassis_lean())
+	results.append(_test_slope_pitch_alignment())
 	return results
 
 func _test_surface_friction_lookup() -> Dictionary:
@@ -77,4 +78,26 @@ func _test_asymmetric_com_induces_chassis_lean() -> Dictionary:
 		"name": "test_asymmetric_com_induces_chassis_lean",
 		"passed": passed,
 		"message": "0.15m lateral COM offset induced %.1f deg visible chassis tilt (expected > 12 deg)" % roll_deg
+	}
+
+func _test_slope_pitch_alignment() -> Dictionary:
+	var forward_dir: Vector3 = Vector3(0, 0, -1) # Pointing forward along -Z
+	
+	# Downhill slope: normal tilted back (+Z component)
+	var downhill_normal: Vector3 = Vector3(0, cos(deg_to_rad(20.0)), sin(deg_to_rad(20.0))).normalized()
+	var downhill_slope_dot: float = forward_dir.dot(downhill_normal)
+	var downhill_pitch_deg: float = rad_to_deg(asin(-downhill_slope_dot))
+	
+	# Uphill slope: normal tilted forward (-Z component)
+	var uphill_normal: Vector3 = Vector3(0, cos(deg_to_rad(20.0)), -sin(deg_to_rad(20.0))).normalized()
+	var uphill_slope_dot: float = forward_dir.dot(uphill_normal)
+	var uphill_pitch_deg: float = rad_to_deg(asin(-uphill_slope_dot))
+	
+	var passed: bool = is_equal_approx(downhill_pitch_deg, 20.0) and is_equal_approx(uphill_pitch_deg, -20.0)
+	return {
+		"name": "test_slope_pitch_alignment",
+		"passed": passed,
+		"message": "Downhill pitch = +%.1f deg (nose down), Uphill pitch = %.1f deg (nose up)" % [
+			downhill_pitch_deg, uphill_pitch_deg
+		]
 	}

@@ -4,11 +4,14 @@ const TestInertialDrift = preload("res://test/unit/test_inertial_drift.gd")
 const TestCenterOfMass = preload("res://test/unit/test_center_of_mass.gd")
 const TestHexInventory = preload("res://test/unit/test_hex_inventory.gd")
 const TestPseudoGravity = preload("res://test/unit/test_pseudo_gravity.gd")
+const TestHexWorldGen = preload("res://test/unit/test_hex_world_gen.gd")
+const TestDynamicWeather = preload("res://test/unit/test_dynamic_weather.gd")
 const TestSledWinch = preload("res://test/unit/test_sled_winch.gd")
 const TestPilotLocomotion = preload("res://test/unit/test_pilot_locomotion.gd")
 const TestCombatBreach = preload("res://test/unit/test_combat_breach.gd")
 const TestTrainDecoupling = preload("res://test/unit/test_train_decoupling.gd")
 const TestHexUIMath = preload("res://test/unit/test_hex_ui_math.gd")
+const TestCameraOcclusion = preload("res://test/unit/test_camera_occlusion.gd")
 
 func _init() -> void:
 	print("==================================================")
@@ -24,11 +27,14 @@ func _init() -> void:
 		{"name": "Center of Mass & Tipping Dynamics", "instance": TestCenterOfMass.new()},
 		{"name": "Hexagonal Spatial Inventory", "instance": TestHexInventory.new()},
 		{"name": "Pseudo-Gravity Hex Settling Physics", "instance": TestPseudoGravity.new()},
+		{"name": "Procedural Hex World Generation & Streaming", "instance": TestHexWorldGen.new()},
+		{"name": "Dynamic Blizzard Weather & Thermal Field", "instance": TestDynamicWeather.new()},
 		{"name": "Sled Heavy Winch & Spring Mechanics", "instance": TestSledWinch.new()},
 		{"name": "Pilot Locomotion & Jetpack Mobility", "instance": TestPilotLocomotion.new()},
 		{"name": "Combat Damage & Plasma Breaching", "instance": TestCombatBreach.new()},
 		{"name": "Train Car Decoupling & Rail Dynamics", "instance": TestTrainDecoupling.new()},
-		{"name": "Hexagonal 2D UI Math & Axial Symmetry", "instance": TestHexUIMath.new()}
+		{"name": "Hexagonal 2D UI Math & Axial Symmetry", "instance": TestHexUIMath.new()},
+		{"name": "Camera Terrain & Prop See-Through Occlusion", "instance": TestCameraOcclusion.new()}
 	]
 	
 	for suite: Dictionary in test_suites:

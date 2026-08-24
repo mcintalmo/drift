@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="SectorBiomeData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/sector_biome_data.gd" id="1_biome"]
+
+[resource]
+script = ExtResource("1_biome")
+biome_id = &"glacial_chasms"
+biome_name = "Glacial Chasms"
+description = "Fractured ice sheets and bottomless crevasses crossed by high-speed rail lines and black ice lakes."
+base_ambient_temp_c = -24.0
+min_storm_temp_c = -44.0
+blizzard_frequency = 0.55
+base_smog_index = 0.1
+elevation_amplitude = 2.0
+elevation_frequency = 0.024
+plateau_tier_height_m = 4.2
+plateau_threshold = 0.28
+chasm_threshold = -0.28
+hex_cell_outer_radius_m = 6.0
+surface_weights = {
+&"ice": 0.45,
+&"firn": 0.25,
+&"pack": 0.20,
+&"crust": 0.10
+}
+boulder_density = 0.15
+pine_tree_density = 0.02
+industrial_debris_density = 0.06
+overturned_sled_wreck_chance = 0.04
+abandoned_corpo_facility_chance = 0.02
+hot_spring_basin_chance = 0.01
+hot_spring_cluster_boost = 0.10
+ground_crate_cache_chance = 0.10

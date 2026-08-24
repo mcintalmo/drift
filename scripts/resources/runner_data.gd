@@ -24,6 +24,12 @@ extends Resource
 ## Permafrost Scree: bumpy grip, low drag
 @export var friction_scree: Vector2 = Vector2(0.60, 0.25)
 
+## Firn (Multi-Year Compacted Glacial Ice): high lateral grip, ultra-low rolling drag for speed
+@export var friction_firn: Vector2 = Vector2(0.80, 0.06)
+
+## Windslab / Ice Crust: brittle frozen crust over powder
+@export var friction_crust: Vector2 = Vector2(0.65, 0.28)
+
 @export_group("Handling Adjustments")
 @export_range(0.5, 2.0, 0.05) var steering_bite_multiplier: float = 1.0
 @export_range(0.0, 0.1, 0.005) var wear_rate_per_km: float = 0.01
@@ -31,7 +37,7 @@ extends Resource
 ## Returns Vector2(lateral_friction, longitudinal_drag) for a surface type string
 func get_friction_for_surface(surface_type: StringName) -> Vector2:
 	match surface_type:
-		&"black_ice":
+		&"black_ice", &"ice":
 			return friction_black_ice
 		&"powder":
 			return friction_powder
@@ -41,5 +47,9 @@ func get_friction_for_surface(surface_type: StringName) -> Vector2:
 			return friction_snirt
 		&"scree":
 			return friction_scree
+		&"firn":
+			return friction_firn
+		&"crust", &"windslab":
+			return friction_crust
 		_:
 			return friction_pack

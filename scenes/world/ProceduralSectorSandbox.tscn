@@ -1,0 +1,86 @@
+[gd_scene format=3 uid="uid://c5v8m2lap8w1"]
+
+[ext_resource type="Script" path="res://scripts/world/hex_sector_manager.gd" id="1_sector_mgr"]
+[ext_resource type="Resource" path="res://resources/biomes/temperate_permafrost.tres" id="2_biome"]
+[ext_resource type="Script" path="res://scripts/world/dynamic_weather_manager.gd" id="3_weather_mgr"]
+[ext_resource type="PackedScene" path="res://scenes/entities/sled/SledChassis.tscn" id="4_sled"]
+[ext_resource type="PackedScene" path="res://scenes/entities/pilot/Pilot.tscn" id="5_pilot"]
+[ext_resource type="PackedScene" path="res://scenes/camera/IsometricCameraRig.tscn" id="6_cam"]
+[ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="7_hud"]
+[ext_resource type="PackedScene" path="res://scenes/ui/HexInventoryUI.tscn" id="8_inv_ui"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sandbox"]
+sky_top_color = Color(0.18, 0.38, 0.62, 1)
+sky_horizon_color = Color(0.7, 0.78, 0.88, 1)
+ground_bottom_color = Color(0.6, 0.68, 0.78, 1)
+ground_horizon_color = Color(0.7, 0.78, 0.88, 1)
+
+[sub_resource type="Sky" id="Sky_sandbox"]
+sky_material = SubResource("ProceduralSkyMaterial_sandbox")
+
+[sub_resource type="Environment" id="Environment_sandbox"]
+background_mode = 2
+sky = SubResource("Sky_sandbox")
+ambient_light_source = 3
+ambient_light_color = Color(0.75, 0.82, 0.9, 1)
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.75, 0.82, 0.9, 1)
+fog_density = 0.003
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_snow_flake"]
+transparency = 1
+albedo_color = Color(1, 1, 1, 0.85)
+
+[sub_resource type="SphereMesh" id="SphereMesh_flake"]
+material = SubResource("StandardMaterial3D_snow_flake")
+radius = 0.08
+height = 0.16
+
+[node name="ProceduralSectorSandbox" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_sandbox")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.353553, 0.353553, 0, 0.707107, 0.707107, -0.5, -0.612372, 0.612372, 0, 45, 0)
+shadow_enabled = true
+
+[node name="DynamicWeatherManager" type="Node3D" parent="." node_paths=PackedStringArray("world_environment", "directional_light", "snow_particles")]
+script = ExtResource("3_weather_mgr")
+world_environment = NodePath("../WorldEnvironment")
+directional_light = NodePath("../DirectionalLight3D")
+snow_particles = NodePath("SnowParticles")
+
+[node name="SnowParticles" type="CPUParticles3D" parent="DynamicWeatherManager"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 15, 0)
+amount = 128
+lifetime = 3.0
+mesh = SubResource("SphereMesh_flake")
+emission_shape = 3
+emission_box_extents = Vector3(45, 1, 45)
+direction = Vector3(0.5, -1, 0.5)
+spread = 25.0
+initial_velocity_min = 6.0
+initial_velocity_max = 12.0
+
+[node name="HexSectorManager" type="Node3D" parent="." node_paths=PackedStringArray("active_target")]
+script = ExtResource("1_sector_mgr")
+active_target = NodePath("../Pilot")
+biome_data = ExtResource("2_biome")
+world_seed = 4281
+render_radius_rings = 4
+
+[node name="SledChassis" parent="." groups=["player_sled"] instance=ExtResource("4_sled")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0.6, 0)
+is_occupied = false
+
+[node name="Pilot" parent="." groups=["player_pilot"] instance=ExtResource("5_pilot")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
+
+[node name="IsometricCameraRig" parent="." node_paths=PackedStringArray("target_node") instance=ExtResource("6_cam")]
+target_node = NodePath("../Pilot")
+
+[node name="HUD" parent="." instance=ExtResource("7_hud")]
+
+[node name="HexInventoryUI" parent="." instance=ExtResource("8_inv_ui")]

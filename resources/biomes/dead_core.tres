@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="SectorBiomeData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/sector_biome_data.gd" id="1_biome"]
+
+[resource]
+script = ExtResource("1_biome")
+biome_id = &"dead_core"
+biome_name = "The Dead Core"
+description = "Absolute zero abyssal permafrost, perpetual whiteout storms, and pure geothermal volcanic fissures."
+base_ambient_temp_c = -38.0
+min_storm_temp_c = -58.0
+blizzard_frequency = 0.85
+base_smog_index = 0.25
+elevation_amplitude = 2.2
+elevation_frequency = 0.024
+plateau_tier_height_m = 4.5
+plateau_threshold = 0.28
+chasm_threshold = -0.30
+hex_cell_outer_radius_m = 6.0
+surface_weights = {
+&"ice": 0.45,
+&"firn": 0.30,
+&"scree": 0.15,
+&"crust": 0.10
+}
+boulder_density = 0.18
+pine_tree_density = 0.0
+industrial_debris_density = 0.10
+overturned_sled_wreck_chance = 0.04
+abandoned_corpo_facility_chance = 0.03
+hot_spring_basin_chance = 0.015
+hot_spring_cluster_boost = 0.10
+ground_crate_cache_chance = 0.14

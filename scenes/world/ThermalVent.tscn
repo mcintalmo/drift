@@ -1,0 +1,72 @@
+[gd_scene format=3 uid="uid://b2m6v5x8qaq1"]
+
+[ext_resource type="Script" path="res://scripts/world/thermal_vent.gd" id="1_vent"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rock"]
+albedo_color = Color(0.2, 0.18, 0.16, 1)
+roughness = 0.9
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_mound"]
+material = SubResource("StandardMaterial3D_rock")
+top_radius = 1.2
+bottom_radius = 3.5
+height = 1.4
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_mound"]
+radius = 3.5
+height = 1.4
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_warmth"]
+radius = 12.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_steam"]
+transparency = 1
+albedo_color = Color(0.9, 0.95, 1.0, 0.35)
+roughness = 0.5
+
+[sub_resource type="SphereMesh" id="SphereMesh_particle"]
+material = SubResource("StandardMaterial3D_steam")
+radius = 0.4
+height = 0.8
+
+[node name="ThermalVent" type="Node3D" groups=["thermal_vents"]]
+script = ExtResource("1_vent")
+
+[node name="RockMound" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
+collision_layer = 1
+collision_mask = 6
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RockMound"]
+mesh = SubResource("CylinderMesh_mound")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RockMound"]
+shape = SubResource("CylinderShape3D_mound")
+
+[node name="HeatArea" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 6
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HeatArea"]
+shape = SubResource("SphereShape3D_warmth")
+
+[node name="OmniLight3D" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.0, 0)
+light_color = Color(1, 0.65, 0.25, 1)
+light_energy = 3.5
+omni_range = 14.0
+
+[node name="SteamParticles" type="CPUParticles3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
+amount = 24
+lifetime = 2.5
+mesh = SubResource("SphereMesh_particle")
+emission_shape = 1
+emission_sphere_radius = 0.8
+direction = Vector3(0, 1, 0)
+spread = 20.0
+gravity = Vector3(0, 1.5, 0)
+initial_velocity_min = 2.0
+initial_velocity_max = 4.0
+scale_amount_min = 0.5
+scale_amount_max = 2.0

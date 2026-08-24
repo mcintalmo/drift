@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="SectorBiomeData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/sector_biome_data.gd" id="1_biome"]
+
+[resource]
+script = ExtResource("1_biome")
+biome_id = &"temperate_permafrost"
+biome_name = "Temperate Permafrost"
+description = "Outer rim tundra with packed powder trails, scattered frozen pines, and abandoned scavenger wrecks."
+base_ambient_temp_c = -14.0
+min_storm_temp_c = -36.0
+blizzard_frequency = 0.3
+base_smog_index = 0.05
+elevation_amplitude = 1.85
+elevation_frequency = 0.022
+plateau_tier_height_m = 3.8
+plateau_threshold = 0.30
+chasm_threshold = -0.32
+hex_cell_outer_radius_m = 6.0
+surface_weights = {
+&"pack": 0.50,
+&"powder": 0.25,
+&"ice": 0.12,
+&"firn": 0.08,
+&"crust": 0.05
+}
+boulder_density = 0.08
+pine_tree_density = 0.14
+industrial_debris_density = 0.05
+overturned_sled_wreck_chance = 0.03
+abandoned_corpo_facility_chance = 0.02
+hot_spring_basin_chance = 0.01
+hot_spring_cluster_boost = 0.10
+ground_crate_cache_chance = 0.08

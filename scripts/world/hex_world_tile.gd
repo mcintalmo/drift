@@ -10,6 +10,7 @@ const SectorBiomeDataClass = preload("res://scripts/resources/sector_biome_data.
 @export var tile_outer_radius_m: float = 6.0
 @export var base_elevation_m: float = 0.0
 @export var is_hot_spring: bool = false
+@export var is_glacial_chasm: bool = false
 
 var _static_body: StaticBody3D
 var _mesh_instance: MeshInstance3D
@@ -22,7 +23,7 @@ func _ready() -> void:
 	if not _static_body:
 		_build_tile_geometry([])
 
-## Initializes the hex tile with smooth rolling elevation, separated macro plateau cliffs, and Model C geometry
+## Initializes the hex tile with smooth big hills, macro plateau tiers, and sheer glacial chasm cliffs
 func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring_flag: bool = false) -> void:
 	axial_coord = coord
 	biome_data = biome if biome else SectorBiomeDataClass.new()
@@ -41,7 +42,7 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 	base_noise.frequency = freq
 	base_elevation_m = base_noise.get_noise_2d(world_x, world_z) * amp
 	
-	# 2. Separated Macro Plateau Cliff tiering
+	# 2. Big Hill / Plateau Tiering (Ride-downable slopes)
 	var plateau_noise: FastNoiseLite = FastNoiseLite.new()
 	plateau_noise.seed = seed_val + 7771
 	plateau_noise.frequency = 0.008
@@ -49,12 +50,17 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 	var p_thresh: float = biome_data.get("plateau_threshold") if "plateau_threshold" in biome_data else 0.28
 	var tier_h: float = biome_data.get("plateau_tier_height_m") if "plateau_tier_height_m" in biome_data else 3.5
 	if p_val > p_thresh:
-		base_elevation_m += tier_h # Macro cliff plateau step
+		base_elevation_m += tier_h # Big hill plateau tier (smooth ride-downable slope)
+	elif p_val < -0.38 and not is_hot_spring:
+		is_glacial_chasm = true
+		base_elevation_m -= 6.5 # Sheer glacial gorge chasm
 		
 	position = Vector3(world_x, base_elevation_m, world_z)
 	
 	if is_hot_spring:
 		surface_type = &"slush"
+	elif is_glacial_chasm:
+		surface_type = &"black_ice"
 	else:
 		var surface_roll: float = absf(base_noise.get_noise_2d(world_x + 500.0, world_z + 500.0))
 		if biome_data.has_method("sample_surface_type"):
@@ -80,10 +86,12 @@ func _compute_continuous_corner_heights(center_x: float, center_z: float, base_n
 		# Sample continuous base elevation
 		var corner_world_elevation: float = base_noise.get_noise_2d(corner_world_x, corner_world_z) * amp
 		
-		# Sample plateau tier at this exact corner coordinate
+		# Sample plateau tier at this exact corner coordinate (big hill slope)
 		var p_val: float = plateau_noise.get_noise_2d(corner_world_x, corner_world_z)
 		if p_val > p_thresh:
 			corner_world_elevation += tier_h
+		elif p_val < -0.38 and not is_hot_spring:
+			corner_world_elevation -= 6.5
 			
 		# Relative Y height offset in this tile's local coordinate space
 		var local_y: float = corner_world_elevation - base_elevation_m
@@ -102,7 +110,8 @@ func _build_tile_geometry(corner_heights: Array[float]) -> void:
 	_static_body.set_meta(&"surface_type", surface_type)
 	add_child(_static_body)
 	
-	var hex_mesh: ArrayMesh = _generate_model_c_mesh(tile_outer_radius_m, 4.0, corner_heights)
+	var depth: float = 8.0 if is_glacial_chasm else 4.0
+	var hex_mesh: ArrayMesh = _generate_model_c_mesh(tile_outer_radius_m, depth, corner_heights)
 	
 	_mesh_instance = MeshInstance3D.new()
 	_mesh_instance.name = "TileMesh"
@@ -183,6 +192,11 @@ func _create_surface_material(surface: StringName) -> StandardMaterial3D:
 		mat.albedo_color = Color(0.72, 0.58, 0.35, 1.0) # Mineral sulfur earth rim
 		mat.roughness = 0.95
 		return mat
+	elif is_glacial_chasm:
+		mat.albedo_color = Color(0.18, 0.28, 0.38, 1.0) # Deep glacial chasm basalt
+		mat.roughness = 0.4
+		mat.metallic = 0.3
+		return mat
 		
 	match surface:
 		&"black_ice", &"ice":
@@ -222,7 +236,7 @@ func _spawn_procedural_features(seed_val: int) -> void:
 		_setup_hot_spring_basin()
 		return
 	
-	if not biome_data:
+	if is_glacial_chasm or not biome_data:
 		return
 	
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()

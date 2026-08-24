@@ -8,6 +8,7 @@ signal drift_started
 signal drift_ended
 signal linear_speed_changed(current_speed_kmh: float)
 signal sled_roll_updated(roll_angle_deg: float)
+signal sled_pitch_updated(pitch_angle_deg: float)
 
 @export_group("Dependencies")
 @export var target_body: CharacterBody3D
@@ -24,6 +25,7 @@ signal sled_roll_updated(roll_angle_deg: float)
 var velocity_3d: Vector3 = Vector3.ZERO
 var heading_angle_rad: float = 0.0
 var roll_angle_rad: float = 0.0
+var pitch_angle_rad: float = 0.0
 var current_total_mass_kg: float = 250.0
 var external_com_lateral_offset_m: float = 0.0
 var external_com_height_m: float = 0.25
@@ -141,8 +143,8 @@ func update_physics(
 	target_body.move_and_slide()
 	velocity_3d = target_body.velocity
 	
-	# 7. Roll Angle & Tipping Dynamics (Basis Transformation)
-	_update_roll_dynamics(delta, lateral_speed, steer_input, horizontal_velocity.length())
+	# 7. Roll & Pitch Alignment to Ground Slopes (Basis Transformation)
+	_update_attitude_dynamics(delta, forward_dir, lateral_speed, steer_input, horizontal_velocity.length())
 	
 	# 8. Signals
 	var speed_kmh: float = horizontal_velocity.length() * 3.6
@@ -167,7 +169,7 @@ func _get_current_friction() -> Vector2:
 		return runners.get_friction_for_surface(current_surface)
 	return Vector2(0.75, 0.15)
 
-func _update_roll_dynamics(delta: float, lateral_speed: float, steer_input: float, speed_mag: float) -> void:
+func _update_attitude_dynamics(delta: float, forward_dir: Vector3, lateral_speed: float, steer_input: float, speed_mag: float) -> void:
 	# 1. Static gravity tilt from lateral COM offset
 	var static_com_roll: float = (external_com_lateral_offset_m / 0.20) * deg_to_rad(20.0)
 	
@@ -182,12 +184,30 @@ func _update_roll_dynamics(delta: float, lateral_speed: float, steer_input: floa
 	var restore_speed: float = stats.roll_restoring_stiffness if stats else 6.0
 	roll_angle_rad = lerpf(roll_angle_rad, target_roll_rad, restore_speed * delta)
 	
-	# Apply combined Heading (Y) and Roll (Z in local vehicle space) Basis to chassis
+	# 4. Ground Slope Pitch Alignment
+	var target_pitch_rad: float = 0.0
+	if ground_raycast and ground_raycast.is_colliding():
+		var ground_normal: Vector3 = ground_raycast.get_collision_normal()
+		# Projection of ground normal along vehicle forward heading
+		# When pointing downhill: normal has component along heading -> pitches forward
+		var slope_dot: float = forward_dir.dot(ground_normal)
+		target_pitch_rad = clampf(asin(-slope_dot), deg_to_rad(-35.0), deg_to_rad(35.0))
+	elif target_body.is_on_floor():
+		var floor_normal: Vector3 = target_body.get_floor_normal()
+		var slope_dot: float = forward_dir.dot(floor_normal)
+		target_pitch_rad = clampf(asin(-slope_dot), deg_to_rad(-35.0), deg_to_rad(35.0))
+	
+	pitch_angle_rad = lerpf(pitch_angle_rad, target_pitch_rad, 8.0 * delta)
+	
+	# Apply combined Heading (Y), Pitch (X local), and Roll (Z local)
 	var heading_basis: Basis = Basis(Vector3.UP, heading_angle_rad)
+	var pitch_basis: Basis = Basis(Vector3(1, 0, 0), pitch_angle_rad)
 	var roll_basis: Basis = Basis(Vector3(0, 0, -1), roll_angle_rad)
-	target_body.transform.basis = heading_basis * roll_basis
+	
+	target_body.transform.basis = (heading_basis * pitch_basis * roll_basis).orthonormalized()
 	
 	sled_roll_updated.emit(rad_to_deg(roll_angle_rad))
+	sled_pitch_updated.emit(rad_to_deg(pitch_angle_rad))
 	
 	var threshold_deg: float = stats.tipping_angle_threshold_deg if stats else 24.0
 	var is_tipping_imminent: bool = absf(rad_to_deg(roll_angle_rad)) >= threshold_deg

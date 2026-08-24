@@ -407,8 +407,8 @@ func _spawn_streamed_rail_segment_at(coord: Vector2i, tile: Node3D) -> void:
 		tile.add_child(multi_segment_root)
 	_active_rail_segments[coord] = multi_segment_root
 	
-	# Check if this segment carries an abandoned loot freight car
-	if seg_info.get("has_car", false):
+	# Check if this segment carries an abandoned loot freight car (derelict tracks only)
+	if not is_active and seg_info.get("has_car", false):
 		var mid_2d: Vector3 = (from_world_2d + to_world_2d) * 0.5
 		var dir_3d: Vector3 = (to_world_2d - from_world_2d).normalized()
 		var car_pos: Vector3 = mid_2d
@@ -451,17 +451,32 @@ func _plan_macro_railroad_corridor(start: Vector2i, end: Vector2i) -> void:
 	var min_r: int = mini(start.y, end.y) - 4
 	var max_r: int = maxi(start.y, end.y) + 4
 	
+	var w_start: Vector3 = axial_to_world_pos(start)
+	var w_end: Vector3 = axial_to_world_pos(end)
+	var axis_vec: Vector3 = w_end - w_start
+	var axis_len: float = axis_vec.length()
+	var axis_dir: Vector3 = axis_vec / axis_len if axis_len > 1.0 else Vector3.FORWARD
+	var lat_dir: Vector3 = Vector3(-axis_dir.z, 0.0, axis_dir.x)
+	var valley_width_m: float = float(biome_data.get("valley_width_hexes") if "valley_width_hexes" in biome_data else 10) * 6.0 * SQRT_3 * 0.5
+	var max_lat_allowed: float = valley_width_m + 16.0
+	
 	var hill_noise: FastNoiseLite = FastNoiseLite.new()
 	hill_noise.seed = world_seed + 7771
 	hill_noise.frequency = 0.009
 	var r_outer: float = biome_data.get("hex_cell_outer_radius_m") if "hex_cell_outer_radius_m" in biome_data else 6.0
 	var c_thresh: float = biome_data.get("chasm_threshold") if "chasm_threshold" in biome_data else -0.32
 	
-	# 1. Register macro sector grid points
+	# 1. Register macro sector grid points within corridor
 	for q: int in range(min_q, max_q + 1):
 		for r: int in range(min_r, max_r + 1):
 			var c: Vector2i = Vector2i(q, r)
 			var w_pos: Vector3 = axial_to_world_pos(c)
+			
+			var rel: Vector3 = w_pos - w_start
+			var lat_dist: float = absf(rel.dot(lat_dir))
+			if lat_dist > max_lat_allowed and c != start and c != end:
+				continue
+				
 			astar.add_point(id_counter, Vector2(w_pos.x, w_pos.z))
 			
 			var is_spring: bool = _evaluate_hot_spring_spawn(c)

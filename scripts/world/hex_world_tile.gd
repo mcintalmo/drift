@@ -15,6 +15,8 @@ const SectorBiomeDataClass = preload("res://scripts/resources/sector_biome_data.
 @export var jump_ramp_direction: Vector2 = Vector2.ZERO
 @export var is_boundary_wall: bool = false
 @export var is_boundary_void: bool = false
+@export var distance_to_rail_m: float = 999.0
+@export var is_railroad_active: bool = false
 
 var _static_body: StaticBody3D
 var _mesh_instance: MeshInstance3D
@@ -49,6 +51,8 @@ func initialize_tile(
 	jump_ramp_direction = ramp_dir
 	is_boundary_wall = boundary_wall_flag
 	is_boundary_void = boundary_void_flag
+	distance_to_rail_m = dist_to_rail_m
+	is_railroad_active = is_rail_active
 	
 	# 3D world center coordinates in X-Z plane
 	var world_x: float = tile_outer_radius_m * SQRT_3 * (float(coord.x) + float(coord.y) * 0.5)
@@ -309,6 +313,10 @@ func _spawn_procedural_features(seed_val: int) -> void:
 		return
 	
 	if is_glacial_chasm or is_jump_ramp or not biome_data:
+		return
+	
+	# On active train lines, keep a strict 6.0m clearance zone completely clear of obstacles, debris, and crates
+	if is_railroad_active and distance_to_rail_m < 6.0:
 		return
 	
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()

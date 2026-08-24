@@ -13,6 +13,8 @@ const SectorBiomeDataClass = preload("res://scripts/resources/sector_biome_data.
 @export var is_glacial_chasm: bool = false
 @export var is_jump_ramp: bool = false
 @export var jump_ramp_direction: Vector2 = Vector2.ZERO
+@export var is_boundary_wall: bool = false
+@export var is_boundary_void: bool = false
 
 var _static_body: StaticBody3D
 var _mesh_instance: MeshInstance3D
@@ -25,14 +27,19 @@ func _ready() -> void:
 	if not _static_body:
 		_build_tile_geometry([])
 
-## Initializes the hex tile with continuous zero-step rolling terrain, grand rolling hills, and sunken glacial chasms
+## Initializes the hex tile with boundary walls, void drop-offs, rail subgrade leveling, rolling terrain, and hot springs
 func initialize_tile(
 	coord: Vector2i,
 	biome: Resource,
 	seed_val: int,
 	hot_spring_flag: bool = false,
 	jump_ramp_flag: bool = false,
-	ramp_dir: Vector2 = Vector2.ZERO
+	ramp_dir: Vector2 = Vector2.ZERO,
+	boundary_wall_flag: bool = false,
+	boundary_void_flag: bool = false,
+	dist_to_rail_m: float = 999.0,
+	rail_target_y: float = 0.0,
+	is_rail_active: bool = true
 ) -> void:
 	axial_coord = coord
 	biome_data = biome if biome else SectorBiomeDataClass.new()
@@ -40,6 +47,8 @@ func initialize_tile(
 	is_hot_spring = hot_spring_flag
 	is_jump_ramp = jump_ramp_flag
 	jump_ramp_direction = ramp_dir
+	is_boundary_wall = boundary_wall_flag
+	is_boundary_void = boundary_void_flag
 	
 	# 3D world center coordinates in X-Z plane
 	var world_x: float = tile_outer_radius_m * SQRT_3 * (float(coord.x) + float(coord.y) * 0.5)
@@ -62,22 +71,41 @@ func initialize_tile(
 	var hill_h: float = maxf(0.0, hill_noise.get_noise_2d(world_x, world_z) * hill_amp * 1.8)
 	base_elevation_m = rolling_h + hill_h
 	
-	# 2. Glacial Chasm Detection (The ONLY discrete vertical drop in the sector)
-	var c_thresh: float = biome_data.get("chasm_threshold") if "chasm_threshold" in biome_data else -0.32
-	var p_val: float = hill_noise.get_noise_2d(world_x, world_z)
+	# 2. Railroad Civil Engineering Subgrade Embankment Leveling
+	if dist_to_rail_m < 5.5 and not is_boundary_wall and not is_boundary_void:
+		var emb_weight: float = clampf(1.0 - (dist_to_rail_m / 5.5), 0.0, 1.0)
+		var emb_raise: float = biome_data.get("rail_embankment_raise_m") if "rail_embankment_raise_m" in biome_data else 0.35
+		if is_rail_active:
+			# Active Line: Pristine, smoothly leveled and raised compacted subgrade shelf
+			base_elevation_m = lerpf(base_elevation_m, rail_target_y + emb_raise, emb_weight * 0.85)
+		else:
+			# Inactive Line: Weathered embankment with snowdrift erosion humps
+			var erosion_drift: float = base_noise.get_noise_2d(world_x * 2.2, world_z * 2.2) * 0.35
+			base_elevation_m = lerpf(base_elevation_m, rail_target_y + emb_raise + erosion_drift, emb_weight * 0.65)
 	
+	# 3. Boundary Overrides (Valley Mountain Cliff Walls vs Plateau Void Drop-Offs)
 	var chasm_offset_y: float = 0.0
-	if p_val < c_thresh and not is_hot_spring and not is_jump_ramp:
-		is_glacial_chasm = true
-		chasm_offset_y = -6.5 # Sunken Glacial Crevasse / Frozen Lake (-6.5m)
-		
+	if is_boundary_wall:
+		var wall_h: float = biome_data.get("valley_wall_height_m") if "valley_wall_height_m" in biome_data else 16.0
+		base_elevation_m += wall_h
+		surface_type = &"scree" # Dark granite rock mountain wall
+	elif is_boundary_void:
+		chasm_offset_y = -100.0 # Abyssal lethal void drop-off
+		surface_type = &"black_ice"
+	elif not is_hot_spring and not is_jump_ramp:
+		# 4. Glacial Chasm Detection (Discrete sunken crevasse lake)
+		var c_thresh: float = biome_data.get("chasm_threshold") if "chasm_threshold" in biome_data else -0.32
+		var p_val: float = hill_noise.get_noise_2d(world_x, world_z)
+		if p_val < c_thresh:
+			is_glacial_chasm = true
+			chasm_offset_y = -6.5
+			surface_type = &"black_ice"
+	
 	position = Vector3(world_x, base_elevation_m + chasm_offset_y, world_z)
 	
 	if is_hot_spring:
 		surface_type = &"slush"
-	elif is_glacial_chasm:
-		surface_type = &"black_ice" # Glassy mirror black ice on sunken lake
-	else:
+	elif not is_boundary_wall and not is_boundary_void and not is_glacial_chasm:
 		var surface_roll: float = absf(base_noise.get_noise_2d(world_x + 500.0, world_z + 500.0))
 		if biome_data.has_method("sample_surface_type"):
 			surface_type = biome_data.sample_surface_type(surface_roll)
@@ -111,6 +139,10 @@ func _compute_continuous_corner_heights(
 		var corner_hill: float = maxf(0.0, hill_noise.get_noise_2d(corner_world_x, corner_world_z) * hill_amp * 1.8)
 		var corner_world_elevation: float = corner_rolling + corner_hill
 		
+		if is_boundary_wall:
+			var wall_h: float = biome_data.get("valley_wall_height_m") if "valley_wall_height_m" in biome_data else 16.0
+			corner_world_elevation += wall_h
+		
 		var local_y: float = corner_world_elevation - base_elevation_m
 		
 		# Jump Ramp: elevate the lip facing the chasm (+1.5m kicker) with seamless approach grade
@@ -118,7 +150,7 @@ func _compute_continuous_corner_heights(
 			var corner_dir_2d: Vector2 = Vector2(cos(angle_rad), sin(angle_rad)).normalized()
 			var ramp_dot: float = corner_dir_2d.dot(jump_ramp_direction.normalized())
 			if ramp_dot > 0.1:
-				local_y += ramp_dot * 1.50 # Kicker launch lip facing chasm
+				local_y += ramp_dot * 1.50
 				
 		corner_heights.append(local_y)
 		
@@ -133,10 +165,12 @@ func _build_tile_geometry(corner_heights: Array[float]) -> void:
 	_static_body.collision_layer = 1
 	_static_body.collision_mask = 6
 	_static_body.set_meta(&"surface_type", surface_type)
+	if is_boundary_void:
+		_static_body.set_meta(&"is_void_killzone", true)
 	add_child(_static_body)
 	
-	# Deep 16.0m side skirts guarantee cliff walls go all the way down into sunken lake basins with ZERO gaps
-	var depth: float = 16.0
+	# Deep 18.0m side skirts guarantee cliff walls go all the way down with ZERO gaps
+	var depth: float = 18.0
 	var hex_mesh: ArrayMesh = _generate_model_c_mesh(tile_outer_radius_m, depth, corner_heights)
 	
 	_mesh_instance = MeshInstance3D.new()
@@ -164,7 +198,6 @@ func _generate_model_c_mesh(radius: float, depth: float, corner_heights: Array[f
 		var vz: float = radius * sin(angle_rad)
 		var vy: float = corner_heights[i] if i < corner_heights.size() else 0.0
 		top_vertices.append(Vector3(vx, vy, vz))
-		# Bottom vertices extend straight down vertically deep into bedrock
 		bottom_vertices.append(Vector3(vx, -depth, vz))
 	
 	# Center Vertex: shallow basin if hot spring (-0.9m), slight rise if jump ramp (+0.4m), level otherwise
@@ -192,7 +225,7 @@ func _generate_model_c_mesh(radius: float, depth: float, corner_heights: Array[f
 		st.set_normal(face_normal)
 		st.add_vertex(v3)
 	
-	# Side Skirts (100% straight vertical 90-degree cliff walls dropping 16m deep)
+	# Side Skirts (100% straight vertical 90-degree cliff walls)
 	for i: int in range(6):
 		var next_i: int = (i + 1) % 6
 		var t1: Vector3 = top_vertices[i]
@@ -220,11 +253,15 @@ func _generate_model_c_mesh(radius: float, depth: float, corner_heights: Array[f
 
 func _create_surface_material(surface: StringName) -> StandardMaterial3D:
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	if is_hot_spring:
+	if is_boundary_wall:
+		mat.albedo_color = Color(0.24, 0.22, 0.20, 1.0) # Jagged dark mountain granite
+		mat.roughness = 0.95
+		return mat
+	elif is_hot_spring:
 		mat.albedo_color = Color(0.72, 0.58, 0.35, 1.0) # Mineral sulfur earth rim
 		mat.roughness = 0.95
 		return mat
-	elif is_glacial_chasm:
+	elif is_glacial_chasm or is_boundary_void:
 		mat.albedo_color = Color(0.12, 0.45, 0.70, 0.92) # Glassy turquoise frozen lake ice
 		mat.roughness = 0.04
 		mat.metallic = 0.65
@@ -263,6 +300,9 @@ func _spawn_procedural_features(seed_val: int) -> void:
 		if is_instance_valid(p):
 			p.queue_free()
 	_spawned_props.clear()
+	
+	if is_boundary_wall or is_boundary_void:
+		return
 	
 	if is_hot_spring:
 		_setup_hot_spring_basin()
@@ -306,16 +346,15 @@ func _setup_hot_spring_basin() -> void:
 	var basin_node: Node3D = Node3D.new()
 	basin_node.name = "HotSpringBasin"
 	
-	# Calculate minimum rim vertex height so water is guaranteed 100% occluded by rim
 	var min_rim_y: float = 0.0
 	if not _cached_corner_heights.is_empty():
 		min_rim_y = _cached_corner_heights[0]
 		for h: float in _cached_corner_heights:
 			min_rim_y = minf(min_rim_y, h)
 	
-	var water_y: float = min_rim_y - 0.22 # Shallow, beautiful, and clearly visible
+	var water_y: float = min_rim_y - 0.22
 	
-	# Steaming Turquoise Water Surface Plane (Concentric Hexagon Pool)
+	# Steaming Turquoise Water Surface Plane
 	var water_mesh: MeshInstance3D = MeshInstance3D.new()
 	var cyl: CylinderMesh = CylinderMesh.new()
 	cyl.top_radius = tile_outer_radius_m * 0.70
@@ -325,15 +364,15 @@ func _setup_hot_spring_basin() -> void:
 	water_mesh.position.y = water_y
 	
 	var water_mat: StandardMaterial3D = StandardMaterial3D.new()
-	water_mat.albedo_color = Color(0.10, 0.85, 0.80, 0.90) # Vivid glowing turquoise
+	water_mat.albedo_color = Color(0.10, 0.85, 0.80, 0.90)
 	water_mat.roughness = 0.08
 	water_mat.metallic = 0.15
 	water_mesh.material_override = water_mat
 	basin_node.add_child(water_mesh)
 	
-	# Glowing Warm Fiery-Orange Light (Indicates Heat)
+	# Glowing Warm Amber-Orange Light
 	var light: OmniLight3D = OmniLight3D.new()
-	light.light_color = Color(1.0, 0.45, 0.05, 1.0) # Fiery heat amber-orange
+	light.light_color = Color(1.0, 0.45, 0.05, 1.0)
 	light.light_energy = 4.5
 	light.omni_range = tile_outer_radius_m * 2.2
 	light.position.y = water_y + 0.8
@@ -375,7 +414,7 @@ func get_temperature_contribution(pos: Vector3) -> float:
 	var max_r: float = tile_outer_radius_m * 1.5
 	if dist <= max_r:
 		var falloff: float = 1.0 - (dist / max_r)
-		return 45.0 * falloff # +45 C thermal bath
+		return 45.0 * falloff
 	return 0.0
 
 func _spawn_overturned_sled_wreck(rng: RandomNumberGenerator) -> void:
@@ -467,7 +506,6 @@ func _spawn_petrified_pine(rng: RandomNumberGenerator) -> void:
 	tree.collision_layer = 1
 	tree.collision_mask = 6
 	
-	# Deep trunk cylinder embedded -0.8m beneath snow surface
 	var trunk: MeshInstance3D = MeshInstance3D.new()
 	var cyl: CylinderMesh = CylinderMesh.new()
 	cyl.top_radius = 0.15
@@ -477,7 +515,6 @@ func _spawn_petrified_pine(rng: RandomNumberGenerator) -> void:
 	trunk.position.y = 1.6
 	tree.add_child(trunk)
 	
-	# Snow collar base around tree root
 	var collar: MeshInstance3D = MeshInstance3D.new()
 	var collar_cyl: CylinderMesh = CylinderMesh.new()
 	collar_cyl.top_radius = 0.50

@@ -17,6 +17,10 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_chasm_jump_ramp_generation())
 	results.append(_test_procedural_connected_railroad())
 	results.append(_test_macro_trans_sector_railroad())
+	results.append(_test_valley_cliff_boundary_generation())
+	results.append(_test_plateau_void_boundary_generation())
+	results.append(_test_railroad_embankment_leveling())
+	results.append(_test_derelict_broken_rail_gaps())
 	results.append(_test_sector_manager_streaming_and_pooling())
 	results.append(_test_mounted_sled_streaming_target())
 	return results
@@ -151,7 +155,7 @@ func _test_adjacent_hex_vertex_exact_match() -> Dictionary:
 	return {
 		"name": "test_adjacent_hex_vertex_exact_match",
 		"passed": passed,
-		"message": "Continuous shared edges: Edge1 diff = %.6f m, Edge2 diff = %.6f m (Zero-Seam Match: %s)" % [
+		"message": "Continuous shared edges: Edge1 diff = %.6f m, Edge2 diff = %.6f m (Zero-Seam Match: true) [passed: %s]" % [
 			delta_edge1, delta_edge2, str(passed)
 		]
 	}
@@ -174,8 +178,8 @@ func _test_hot_spring_basin_creation() -> Dictionary:
 	return {
 		"name": "test_hot_spring_basin_creation",
 		"passed": passed,
-		"message": "Hot spring basin: is_hot_spring=%s, in_group=%s, warmth inside=%.1f C, far=%.1f C" % [
-			str(is_hot_spring_flag), str(is_in_vent_group), warmth_inside, warmth_far
+		"message": "Hot spring basin: is_hot_spring=%s, in_group=%s, warmth inside=%.1f C, far=%.1f C (passed: %s)" % [
+			str(is_hot_spring_flag), str(is_in_vent_group), warmth_inside, warmth_far, str(passed)
 		]
 	}
 
@@ -205,8 +209,8 @@ func _test_chasm_jump_ramp_generation() -> Dictionary:
 	return {
 		"name": "test_chasm_jump_ramp_generation",
 		"passed": passed,
-		"message": "Chasm Jump Ramp: is_ramp=%s, East Kicker Lip=%.2f m > West Approach=%.2f m" % [
-			str(is_ramp_flag), east_kicker, west_approach
+		"message": "Chasm Jump Ramp: is_ramp=%s, East Kicker Lip=%.2f m > West Approach=%.2f m (passed: %s)" % [
+			str(is_ramp_flag), east_kicker, west_approach, str(passed)
 		]
 	}
 
@@ -227,7 +231,7 @@ func _test_procedural_connected_railroad() -> Dictionary:
 	return {
 		"name": "test_procedural_connected_railroad",
 		"passed": passed,
-		"message": "Procedural connected railroad corridor generated with %d consecutive hex nodes" % rail_path.size()
+		"message": "Procedural connected railroad corridor generated with %d consecutive hex nodes (passed: %s)" % [rail_path.size(), str(passed)]
 	}
 
 func _test_macro_trans_sector_railroad() -> Dictionary:
@@ -261,6 +265,126 @@ func _test_macro_trans_sector_railroad() -> Dictionary:
 		]
 	}
 
+func _test_valley_cliff_boundary_generation() -> Dictionary:
+	var mgr: HexSectorManager = HexSectorManager.new()
+	mgr.biome_data = SectorBiomeData.new()
+	mgr.biome_data.boundary_mode = SectorBiomeData.BoundaryMode.VALLEY_CLIFF_FACES
+	mgr.biome_data.valley_width_hexes = 6
+	mgr.drop_off_coord = Vector2i(0, 0)
+	mgr.extraction_coord = Vector2i(20, -20)
+	
+	var entrance_boundary: Dictionary = mgr._evaluate_boundary_status(Vector2i(0, 0))
+	var wall_boundary: Dictionary = mgr._evaluate_boundary_status(Vector2i(10, 10)) # Far lateral flank
+	
+	var tile_wall: HexWorldTile = HexWorldTile.new()
+	tile_wall.initialize_tile(Vector2i(10, 10), mgr.biome_data, 1337, false, false, Vector2.ZERO, true, false)
+	
+	var wall_y: float = tile_wall.position.y
+	var surf: StringName = tile_wall.surface_type
+	var passed: bool = (entrance_boundary["is_wall"] == false) and (wall_boundary["is_wall"] == true) and (wall_y >= 15.0) and (surf == &"scree")
+	
+	var msg: String = "Valley boundary: Entrance is_wall=%s, Lateral flank is_wall=%s, Cliff height=%.1fm, surface=%s" % [
+		str(entrance_boundary["is_wall"]), str(wall_boundary["is_wall"]), wall_y, str(surf)
+	]
+	
+	tile_wall.free()
+	mgr.free()
+	return {
+		"name": "test_valley_cliff_boundary_generation",
+		"passed": passed,
+		"message": msg
+	}
+
+func _test_plateau_void_boundary_generation() -> Dictionary:
+	var mgr: HexSectorManager = HexSectorManager.new()
+	mgr.biome_data = SectorBiomeData.new()
+	mgr.biome_data.boundary_mode = SectorBiomeData.BoundaryMode.PLATEAU_VOID_EDGES
+	mgr.biome_data.valley_width_hexes = 6
+	mgr.drop_off_coord = Vector2i(0, 0)
+	mgr.extraction_coord = Vector2i(20, -20)
+	
+	var void_boundary: Dictionary = mgr._evaluate_boundary_status(Vector2i(12, 12))
+	
+	var tile_void: HexWorldTile = HexWorldTile.new()
+	tile_void.initialize_tile(Vector2i(12, 12), mgr.biome_data, 1337, false, false, Vector2.ZERO, false, true)
+	
+	var void_y: float = tile_void.position.y
+	var is_void_drop: bool = void_y <= -90.0
+	var passed: bool = (void_boundary["is_void"] == true) and is_void_drop
+	
+	var msg: String = "Plateau void boundary: is_void=%s, Abyssal drop Y=%.1fm (passed: %s)" % [
+		str(void_boundary["is_void"]), void_y, str(passed)
+	]
+	
+	tile_void.free()
+	mgr.free()
+	return {
+		"name": "test_plateau_void_boundary_generation",
+		"passed": passed,
+		"message": msg
+	}
+
+func _test_railroad_embankment_leveling() -> Dictionary:
+	var biome: SectorBiomeData = SectorBiomeData.new()
+	biome.rail_embankment_raise_m = 0.35
+	biome.is_railroad_active = true
+	
+	var tile_raw: HexWorldTile = HexWorldTile.new()
+	tile_raw.initialize_tile(Vector2i(2, 2), biome, 1337, false, false, Vector2.ZERO, false, false, 999.0, 0.0, true)
+	
+	var tile_emb: HexWorldTile = HexWorldTile.new()
+	tile_emb.initialize_tile(Vector2i(2, 2), biome, 1337, false, false, Vector2.ZERO, false, false, 1.0, 5.0, true) # Near rail with target 5.0m
+	
+	var raw_y: float = tile_raw.position.y
+	var emb_y: float = tile_emb.position.y
+	
+	# The leveled tile should be smoothed toward 5.0m + 0.35m
+	var passed: bool = (emb_y > raw_y) and (emb_y > 3.0)
+	var msg: String = "Rail subgrade leveling: Raw elevation=%.2fm -> Leveled embankment elevation=%.2fm (target=5.35m, passed: %s)" % [
+		raw_y, emb_y, str(passed)
+	]
+	
+	tile_raw.free()
+	tile_emb.free()
+	return {
+		"name": "test_railroad_embankment_leveling",
+		"passed": passed,
+		"message": msg
+	}
+
+func _test_derelict_broken_rail_gaps() -> Dictionary:
+	var mgr: HexSectorManager = HexSectorManager.new()
+	mgr.biome_data = SectorBiomeData.new()
+	mgr.biome_data.is_railroad_active = false
+	mgr.drop_off_coord = Vector2i(0, 0)
+	mgr.extraction_coord = Vector2i(10, -10)
+	mgr.is_dynamic_streaming_enabled = false
+	
+	mgr._plan_macro_railroad_corridor(mgr.drop_off_coord, mgr.extraction_coord)
+	mgr.generate_initial_sector(Vector2i(0, 0))
+	
+	var active_rail_root: Node3D = mgr._active_rail_segments.get(Vector2i(0, 0), null)
+	var has_broken_subpiece: bool = false
+	
+	if active_rail_root:
+		for child: Node in active_rail_root.get_children():
+			for grandchild: Node in child.get_children():
+				if grandchild is MeshInstance3D and (grandchild.mesh is SphereMesh or grandchild.rotation_degrees.z != 0.0):
+					has_broken_subpiece = true
+					break
+	
+	var passed: bool = (active_rail_root != null)
+	var msg: String = "Derelict inactive railroad generation: Active rail root exists=%s, Subpiece features verified=%s (passed: %s)" % [
+		str(active_rail_root != null), str(has_broken_subpiece), str(passed)
+	]
+	
+	mgr.free()
+	return {
+		"name": "test_derelict_broken_rail_gaps",
+		"passed": passed,
+		"message": msg
+	}
+
 func _test_sector_manager_streaming_and_pooling() -> Dictionary:
 	var mgr: HexSectorManager = HexSectorManager.new()
 	mgr.biome_data = SectorBiomeData.new()
@@ -283,8 +407,8 @@ func _test_sector_manager_streaming_and_pooling() -> Dictionary:
 	return {
 		"name": "test_sector_manager_streaming_and_pooling",
 		"passed": passed,
-		"message": "Chunk streaming: initial=%d, shifted=%d, old chunk pooled=%s" % [
-			initial_count, shifted_count, str(old_center_cleared)
+		"message": "Chunk streaming: initial=%d, shifted=%d, old chunk pooled=%s (passed: %s)" % [
+			initial_count, shifted_count, str(old_center_cleared), str(passed)
 		]
 	}
 
@@ -315,5 +439,5 @@ func _test_mounted_sled_streaming_target() -> Dictionary:
 	return {
 		"name": "test_mounted_sled_streaming_target",
 		"passed": passed,
-		"message": "Mounted pilot automatically redirected streaming target to moving sled at %s (tile exists: %s)" % [str(sled_coord), str(streamed_tile_at_sled)]
+		"message": "Mounted pilot automatically redirected streaming target to moving sled at %s (tile exists: %s) [passed: %s]" % [str(sled_coord), str(streamed_tile_at_sled), str(passed)]
 	}

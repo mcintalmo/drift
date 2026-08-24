@@ -19,8 +19,8 @@ signal railroad_generated(path_length: int)
 @export var is_procedural_railroad_enabled: bool = true
 
 @export_group("Macro Trans-Sector Objectives")
-@export var drop_off_coord: Vector2i = Vector2i(0, 0) # Sector Insertion / Drop-Off Zone
-@export var extraction_coord: Vector2i = Vector2i(18, -18) # Sector Extraction Terminal (~300m North-East)
+@export var drop_off_coord: Vector2i = Vector2i(0, 0) # Sector Insertion / Drop-Off Zone (Valley Entrance)
+@export var extraction_coord: Vector2i = Vector2i(18, -18) # Sector Extraction Terminal (Valley Exit)
 
 @export_group("Isometric Frustum Streaming Extents")
 @export var forward_render_depth_m: float = 58.0 # Deep render distance to the North (screen up)
@@ -243,13 +243,24 @@ func _spawn_tile_at(coord: Vector2i) -> void:
 	var is_hot_spring: bool = _evaluate_hot_spring_spawn(coord)
 	var is_chasm: bool = _chasm_registry.get(coord, false) and not is_hot_spring
 	
-	# Evaluate if adjacent to a chasm to form a natural Jump Ramp kicker
+	# 1. Evaluate Valley Boundary Walls vs Void Drop-offs
+	var boundary_flags: Dictionary = _evaluate_boundary_status(coord)
+	var is_wall: bool = boundary_flags.get("is_wall", false)
+	var is_void: bool = boundary_flags.get("is_void", false)
+	
+	# 2. Evaluate if adjacent to a chasm to form a natural Jump Ramp kicker
 	var is_jump_ramp: bool = false
 	var ramp_dir: Vector2 = Vector2.ZERO
-	if not is_chasm and not is_hot_spring:
+	if not is_chasm and not is_hot_spring and not is_wall and not is_void:
 		var ramp_info: Dictionary = _check_chasm_adjacency_ramp(coord)
 		is_jump_ramp = ramp_info.get("is_ramp", false)
 		ramp_dir = ramp_info.get("dir", Vector2.ZERO)
+	
+	# 3. Calculate distance to nearest railway line for subgrade embankment leveling
+	var rail_proximity: Dictionary = _calculate_rail_proximity(coord)
+	var dist_to_rail: float = rail_proximity.get("dist", 999.0)
+	var rail_target_y: float = rail_proximity.get("y", 0.0)
+	var is_rail_active: bool = biome_data.get("is_railroad_active") if "is_railroad_active" in biome_data else false
 	
 	var tile: Node3D = HexWorldTileClass.new()
 	tile.name = "Tile_%d_%d" % [coord.x, coord.y]
@@ -259,14 +270,75 @@ func _spawn_tile_at(coord: Vector2i) -> void:
 		add_child(tile)
 		
 	if tile.has_method("initialize_tile"):
-		tile.initialize_tile(coord, biome_data, world_seed, is_hot_spring, is_jump_ramp, ramp_dir)
+		tile.initialize_tile(
+			coord, biome_data, world_seed,
+			is_hot_spring, is_jump_ramp, ramp_dir,
+			is_wall, is_void,
+			dist_to_rail, rail_target_y, is_rail_active
+		)
 	_active_tiles[coord] = tile
 	
 	# If this tile is part of the macro trans-sector railroad, instantiate its 3D track piece
-	if is_procedural_railroad_enabled and _macro_rail_segments.has(coord):
+	if is_procedural_railroad_enabled and _macro_rail_segments.has(coord) and not is_wall and not is_void:
 		_spawn_streamed_rail_segment_at(coord, tile)
 		
 	tile_spawned.emit(coord, tile)
+
+## Evaluates whether a coordinate lies on the lateral boundary of the valley corridor
+func _evaluate_boundary_status(coord: Vector2i) -> Dictionary:
+	var mode: int = biome_data.get("boundary_mode") if "boundary_mode" in biome_data else SectorBiomeDataClass.BoundaryMode.VALLEY_CLIFF_FACES
+	if mode == SectorBiomeDataClass.BoundaryMode.INFINITE_UNBOUNDED:
+		return {"is_wall": false, "is_void": false}
+		
+	var w_pos: Vector3 = axial_to_world_pos(coord)
+	var w_start: Vector3 = axial_to_world_pos(drop_off_coord)
+	var w_end: Vector3 = axial_to_world_pos(extraction_coord)
+	
+	# Open entrance & exit passes (Drop-Off & Extraction zones are always open)
+	if w_pos.distance_to(w_start) <= 22.0 or w_pos.distance_to(w_end) <= 22.0:
+		return {"is_wall": false, "is_void": false}
+		
+	var axis_vec: Vector3 = w_end - w_start
+	var axis_len: float = axis_vec.length()
+	if axis_len < 1.0:
+		return {"is_wall": false, "is_void": false}
+		
+	var axis_dir: Vector3 = axis_vec / axis_len
+	var lat_dir: Vector3 = Vector3(-axis_dir.z, 0.0, axis_dir.x)
+	
+	var rel: Vector3 = w_pos - w_start
+	var along: float = rel.dot(axis_dir)
+	var lat_dist: float = absf(rel.dot(lat_dir))
+	
+	var valley_width_m: float = float(biome_data.get("valley_width_hexes") if "valley_width_hexes" in biome_data else 8) * 6.0 * SQRT_3 * 0.5
+	var outside_corridor: bool = (lat_dist > valley_width_m) or (along < -24.0) or (along > axis_len + 24.0)
+	
+	if outside_corridor:
+		if mode == SectorBiomeDataClass.BoundaryMode.VALLEY_CLIFF_FACES:
+			return {"is_wall": true, "is_void": false}
+		elif mode == SectorBiomeDataClass.BoundaryMode.PLATEAU_VOID_EDGES:
+			return {"is_wall": false, "is_void": true}
+			
+	return {"is_wall": false, "is_void": false}
+
+## Calculates perpendicular distance from tile center to nearest macro railroad path segment
+func _calculate_rail_proximity(coord: Vector2i) -> Dictionary:
+	if _macro_railroad_path.is_empty():
+		return {"dist": 999.0, "y": 0.0}
+		
+	var w_pos: Vector3 = axial_to_world_pos(coord)
+	var min_dist: float = 999.0
+	var nearest_pos: Vector3 = Vector3.ZERO
+	
+	for r_coord: Vector2i in _macro_railroad_path:
+		var r_pos: Vector3 = axial_to_world_pos(r_coord)
+		var d: float = w_pos.distance_to(r_pos)
+		if d < min_dist:
+			min_dist = d
+			nearest_pos = r_pos
+			
+	var target_y: float = sample_terrain_surface_y(nearest_pos.x, nearest_pos.z)
+	return {"dist": min_dist, "y": target_y}
 
 ## Spawns multi-chord ground-conforming 3D rail pieces strictly on top of the undulating rolling terrain
 func _spawn_streamed_rail_segment_at(coord: Vector2i, tile: Node3D) -> void:
@@ -277,6 +349,8 @@ func _spawn_streamed_rail_segment_at(coord: Vector2i, tile: Node3D) -> void:
 		
 	var from_world_2d: Vector3 = axial_to_world_pos(coord)
 	var to_world_2d: Vector3 = axial_to_world_pos(next_coord)
+	
+	var is_active: bool = biome_data.get("is_railroad_active") if "is_railroad_active" in biome_data else false
 	
 	var multi_segment_root: Node3D = Node3D.new()
 	multi_segment_root.name = "RailSegmentGroup_%d_%d" % [coord.x, coord.y]
@@ -294,7 +368,14 @@ func _spawn_streamed_rail_segment_at(coord: Vector2i, tile: Node3D) -> void:
 		p1.y = sample_terrain_surface_y(p1.x, p1.z) + 0.14
 		p2.y = sample_terrain_surface_y(p2.x, p2.z) + 0.14
 		
-		var sub_node: Node3D = _build_rail_sub_piece_3d(p1, p2)
+		# On inactive derelict lines, evaluate broken/blown track gaps (20% random chance)
+		var is_broken: bool = false
+		if not is_active:
+			var rng_sub: RandomNumberGenerator = RandomNumberGenerator.new()
+			rng_sub.seed = world_seed + (coord.x * 31337) ^ (coord.y * 7919) + (s * 101)
+			is_broken = rng_sub.randf() < 0.22
+			
+		var sub_node: Node3D = _build_rail_sub_piece_3d(p1, p2, is_broken)
 		multi_segment_root.add_child(sub_node)
 	
 	if _rails_container:
@@ -417,7 +498,7 @@ func _plan_macro_railroad_corridor(start: Vector2i, end: Vector2i) -> void:
 		
 	railroad_generated.emit(_macro_railroad_path.size())
 
-func _build_rail_sub_piece_3d(from_pos: Vector3, to_pos: Vector3) -> Node3D:
+func _build_rail_sub_piece_3d(from_pos: Vector3, to_pos: Vector3, is_broken: bool = false) -> Node3D:
 	var segment: Node3D = Node3D.new()
 	segment.name = "RailSubPiece"
 	
@@ -437,10 +518,38 @@ func _build_rail_sub_piece_3d(from_pos: Vector3, to_pos: Vector3) -> Node3D:
 	ballast.mesh = ballast_box
 	ballast.position = Vector3(0, -0.06, 0)
 	var ballast_mat: StandardMaterial3D = StandardMaterial3D.new()
-	ballast_mat.albedo_color = Color(0.35, 0.33, 0.32, 1.0)
+	ballast_mat.albedo_color = Color(0.35, 0.33, 0.32, 1.0) if not is_broken else Color(0.42, 0.38, 0.35, 1.0)
 	ballast_mat.roughness = 0.95
 	ballast.material_override = ballast_mat
 	segment.add_child(ballast)
+	
+	if is_broken:
+		# Weathered broken gap with twisted metal, missing ties, and a snowdrift mound
+		var drift: MeshInstance3D = MeshInstance3D.new()
+		var drift_sphere: SphereMesh = SphereMesh.new()
+		drift_sphere.radius = 1.1
+		drift_sphere.height = 0.6
+		drift.mesh = drift_sphere
+		drift.position = Vector3(0, 0.05, 0)
+		var snow_mat: StandardMaterial3D = StandardMaterial3D.new()
+		snow_mat.albedo_color = Color(0.92, 0.95, 0.98, 1.0)
+		drift.material_override = snow_mat
+		segment.add_child(drift)
+		
+		# Single twisted bent rail fragment
+		var rail_twist: MeshInstance3D = MeshInstance3D.new()
+		var twist_box: BoxMesh = BoxMesh.new()
+		twist_box.size = Vector3(0.12, 0.18, track_len * 0.45)
+		rail_twist.mesh = twist_box
+		rail_twist.position = Vector3(0.75, 0.22, -track_len * 0.2)
+		rail_twist.rotation_degrees = Vector3(15, -12, 20)
+		var rust_mat: StandardMaterial3D = StandardMaterial3D.new()
+		rust_mat.albedo_color = Color(0.52, 0.30, 0.22, 1.0)
+		rust_mat.metallic = 0.6
+		rust_mat.roughness = 0.8
+		rail_twist.material_override = rust_mat
+		segment.add_child(rail_twist)
+		return segment
 	
 	# Wood Ties (Ties along this sub-piece)
 	var tie: MeshInstance3D = MeshInstance3D.new()

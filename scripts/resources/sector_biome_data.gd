@@ -1,6 +1,12 @@
 class_name SectorBiomeData
 extends Resource
 
+enum BoundaryMode {
+	VALLEY_CLIFF_FACES = 0, # Impassable sheer mountain valley walls with entrance and exit passes
+	PLATEAU_VOID_EDGES = 1, # High-altitude sheer abyss drop-offs (falling off is lethal)
+	INFINITE_UNBOUNDED = 2  # Open unbounded sector
+}
+
 @export_group("Identification")
 @export var biome_id: StringName = &"temperate_permafrost"
 @export var biome_name: String = "Temperate Permafrost"
@@ -19,6 +25,17 @@ extends Resource
 @export var plateau_tier_height_m: float = 3.8 # Height of grand hill plateau
 @export var plateau_threshold: float = 0.30 # Distinct grand hill plateau cluster
 @export var chasm_threshold: float = -0.32 # Distinct sunken glacial chasm / frozen lake cluster
+
+@export_group("Sector Boundaries & Valley Corridors")
+@export var boundary_mode: BoundaryMode = BoundaryMode.VALLEY_CLIFF_FACES
+@export var valley_width_hexes: int = 8 # Lateral corridor width (hexes)
+@export var valley_length_hexes: int = 24 # Corridor length (hexes)
+@export var valley_wall_height_m: float = 16.0 # Height of sheer mountain cliff faces
+
+@export_group("Railroad Civil Engineering & State")
+@export var is_railroad_active: bool = false # Active heist mission line vs derelict broken track
+@export var rail_embankment_width_m: float = 5.5 # Width of leveled earthwork subgrade shelf
+@export var rail_embankment_raise_m: float = 0.35 # Elevation of compacted gravel subgrade shelf
 
 @export_group("Surface Distribution Weights")
 @export var surface_weights: Dictionary = {

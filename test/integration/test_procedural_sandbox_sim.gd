@@ -28,7 +28,7 @@ func _init() -> void:
 		sector_mgr.generate_initial_sector()
 	
 	var initial_tile_count: int = sector_mgr.get_active_tile_count()
-	print("  [OK] Initial Hex Tiles Spawned (R=6m, 4 Rings): %d tiles" % initial_tile_count)
+	print("  [OK] Initial Hex Tiles Spawned (Asymmetric North Frustum): %d tiles" % initial_tile_count)
 	
 	print("[2/5] Advancing Physics Simulation across 60 frames (1.0s)...")
 	for frame: int in range(60):
@@ -54,7 +54,7 @@ func _init() -> void:
 	var ambient_temp: float = weather_mgr.get_temperature_at_position(Vector3(0, 0, 0))
 	print("  [OK] Ambient Weather Temp during Gale Storm: %.1f C" % ambient_temp)
 	
-	if initial_tile_count >= 61 and ambient_temp < 0.0:
+	if initial_tile_count >= 50 and ambient_temp < 0.0:
 		print("\n==========================================================")
 		print("  ALL MODEL C PROCEDURAL WORLD & WEATHER SIMULATIONS PASSED!")
 		print("==========================================================")

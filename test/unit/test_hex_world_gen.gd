@@ -10,6 +10,7 @@ func run_tests() -> Array[Dictionary]:
 	var results: Array[Dictionary] = []
 	results.append(_test_axial_to_world_position_conversion())
 	results.append(_test_hex_ring_cluster_generation())
+	results.append(_test_asymmetric_isometric_cluster())
 	results.append(_test_biome_surface_sampling())
 	results.append(_test_adjacent_hex_vertex_exact_match())
 	results.append(_test_hot_spring_basin_creation())
@@ -53,6 +54,39 @@ func _test_hex_ring_cluster_generation() -> Dictionary:
 		"passed": passed,
 		"message": "Concentric rings count: R0=%d, R1=%d, R2=%d, R3=%d, R4=%d (expected 1, 7, 19, 37, 61)" % [
 			ring0.size(), ring1.size(), ring2.size(), ring3.size(), ring4.size()
+		]
+	}
+
+func _test_asymmetric_isometric_cluster() -> Dictionary:
+	var mgr: HexSectorManager = HexSectorManager.new()
+	mgr.biome_data = SectorBiomeData.new()
+	mgr.forward_render_depth_m = 58.0
+	mgr.rear_render_depth_m = 16.0
+	
+	var cluster: Array[Vector2i] = mgr.get_asymmetric_isometric_cluster(Vector3.ZERO, Vector2i.ZERO)
+	
+	# Check that deep North coordinates exist (e.g. (-4, -4) or (-5, -5))
+	var has_deep_north: bool = false
+	var north_count: int = 0
+	var south_count: int = 0
+	
+	for coord: Vector2i in cluster:
+		var w: Vector3 = mgr.axial_to_world_pos(coord)
+		var d_fwd: float = w.dot(HexSectorManager.VIEW_FORWARD)
+		if d_fwd > 25.0:
+			has_deep_north = true
+			north_count += 1
+		elif d_fwd < -5.0:
+			south_count += 1
+			
+	var passed: bool = has_deep_north and (north_count > south_count)
+	
+	mgr.free()
+	return {
+		"name": "test_asymmetric_isometric_cluster",
+		"passed": passed,
+		"message": "Asymmetric cluster: %d tiles total (North deep tiles=%d > South rear tiles=%d)" % [
+			cluster.size(), north_count, south_count
 		]
 	}
 
@@ -180,7 +214,7 @@ func _test_chasm_jump_ramp_generation() -> Dictionary:
 func _test_procedural_connected_railroad() -> Dictionary:
 	var mgr: HexSectorManager = HexSectorManager.new()
 	mgr.biome_data = SectorBiomeData.new()
-	mgr.render_radius_rings = 2 # 19 tiles
+	mgr.render_radius_rings = 2
 	mgr.is_procedural_railroad_enabled = true
 	mgr.is_dynamic_streaming_enabled = false
 	
@@ -199,19 +233,20 @@ func _test_procedural_connected_railroad() -> Dictionary:
 func _test_sector_manager_streaming_and_pooling() -> Dictionary:
 	var mgr: HexSectorManager = HexSectorManager.new()
 	mgr.biome_data = SectorBiomeData.new()
-	mgr.render_radius_rings = 1 # 7 tiles
+	mgr.forward_render_depth_m = 40.0
+	mgr.rear_render_depth_m = 16.0
 	mgr.is_dynamic_streaming_enabled = false
 	
 	mgr.generate_initial_sector(Vector2i(0, 0))
 	var initial_count: int = mgr.get_active_tile_count()
 	
-	# Shift center to (5, 5)
-	mgr.generate_initial_sector(Vector2i(5, 5))
+	# Shift center to (6, 6)
+	mgr.generate_initial_sector(Vector2i(6, 6))
 	var shifted_count: int = mgr.get_active_tile_count()
-	var center_tile_exists: bool = (mgr.get_active_tile(Vector2i(5, 5)) != null)
+	var center_tile_exists: bool = (mgr.get_active_tile(Vector2i(6, 6)) != null)
 	var old_center_cleared: bool = (mgr.get_active_tile(Vector2i(0, 0)) == null)
 	
-	var passed: bool = (initial_count == 7) and (shifted_count == 7) and center_tile_exists and old_center_cleared
+	var passed: bool = (initial_count > 10) and (shifted_count > 10) and center_tile_exists and old_center_cleared
 	
 	mgr.free()
 	return {
@@ -225,7 +260,6 @@ func _test_sector_manager_streaming_and_pooling() -> Dictionary:
 func _test_mounted_sled_streaming_target() -> Dictionary:
 	var mgr: HexSectorManager = HexSectorManager.new()
 	mgr.biome_data = SectorBiomeData.new()
-	mgr.render_radius_rings = 1 # 7 tiles
 	mgr.is_dynamic_streaming_enabled = true
 	
 	var pilot: Pilot = Pilot.new()

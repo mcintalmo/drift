@@ -14,9 +14,15 @@ signal railroad_generated(path_length: int)
 @export var active_target: Node3D
 @export var biome_data: Resource
 @export var world_seed: int = 1337
-@export_range(1, 6, 1) var render_radius_rings: int = 4 # 4 rings = 61 hex tiles
+@export_range(1, 6, 1) var render_radius_rings: int = 4
 @export var is_dynamic_streaming_enabled: bool = true
 @export var is_procedural_railroad_enabled: bool = true
+
+@export_group("Isometric Frustum Streaming Extents")
+@export var forward_render_depth_m: float = 58.0 # Deep render distance to the North (screen up)
+@export var lateral_render_width_m: float = 34.0 # Lateral width (East / West)
+@export var rear_render_depth_m: float = 16.0 # Shallow cutoff to the South (behind camera)
+@export var velocity_lead_seconds: float = 0.70 # Predictive forward tile spawning at speed
 
 # Active Tile Registry: Vector2i(q, r) -> Node3D
 var _active_tiles: Dictionary = {}
@@ -28,6 +34,10 @@ var _rails_container: Node3D
 var _railroad_path: Array[Vector2i] = []
 
 const SQRT_3: float = 1.7320508
+
+# Standard 45-degree isometric view axes
+const VIEW_FORWARD: Vector3 = Vector3(-0.7071068, 0.0, -0.7071068) # "North" (screen up)
+const VIEW_RIGHT: Vector3 = Vector3(0.7071068, 0.0, -0.7071068) # "East" (screen right)
 
 func _ready() -> void:
 	if not _tiles_container:
@@ -46,7 +56,6 @@ func _ready() -> void:
 	
 	_resolve_initial_target()
 	
-	# Listen for mount / dismount events to seamlessly update streaming focus
 	if GlobalEvents.instance:
 		GlobalEvents.instance.pilot_mounted_sled.connect(func(sled: Node) -> void:
 			if sled is Node3D:
@@ -77,7 +86,6 @@ func _physics_process(_delta: float) -> void:
 	if not is_dynamic_streaming_enabled:
 		return
 	
-	# Dynamically resolve effective target (following sled when pilot is mounted)
 	var effective_target: Node3D = active_target
 	if not effective_target or not is_instance_valid(effective_target):
 		_resolve_initial_target()
@@ -92,11 +100,20 @@ func _physics_process(_delta: float) -> void:
 			effective_target = current_sled
 	
 	var target_pos: Vector3 = effective_target.global_position if effective_target.is_inside_tree() else effective_target.position
-	var target_coord: Vector2i = world_pos_to_axial_coord(target_pos)
+	
+	# Add velocity predictive lead
+	var vel_offset: Vector3 = Vector3.ZERO
+	if effective_target is CharacterBody3D:
+		var v: Vector3 = (effective_target as CharacterBody3D).velocity
+		if v.length() > 0.5:
+			vel_offset = v.normalized() * minf(v.length() * velocity_lead_seconds, 22.0)
+			
+	var predictive_pos: Vector3 = target_pos + vel_offset
+	var target_coord: Vector2i = world_pos_to_axial_coord(predictive_pos)
 	
 	if target_coord != _current_center_coord:
 		_current_center_coord = target_coord
-		_update_streaming_rings(target_coord)
+		_update_asymmetric_streaming_rings(predictive_pos, target_coord)
 
 ## Generates concentric hex tiles around center and builds connected railway corridor
 func generate_initial_sector(center_coord: Vector2i = Vector2i.ZERO) -> void:
@@ -110,17 +127,18 @@ func generate_initial_sector(center_coord: Vector2i = Vector2i.ZERO) -> void:
 		add_child(_rails_container)
 		
 	_current_center_coord = center_coord
-	_update_streaming_rings(center_coord)
+	var center_world: Vector3 = axial_to_world_pos(center_coord)
+	_update_asymmetric_streaming_rings(center_world, center_coord)
 	
 	if is_procedural_railroad_enabled:
 		_generate_connected_railroad_corridor()
 		
 	sector_generated.emit(_active_tiles.size())
 
-func _update_streaming_rings(center_coord: Vector2i) -> void:
-	var needed_coords: Array[Vector2i] = get_hex_ring_cluster(center_coord, render_radius_rings)
+func _update_asymmetric_streaming_rings(center_world: Vector3, center_coord: Vector2i) -> void:
+	var needed_coords: Array[Vector2i] = get_asymmetric_isometric_cluster(center_world, center_coord)
 	
-	# Pre-evaluate chasm map so jump ramp kickers know where chasms lie
+	# Pre-evaluate chasm map
 	_pre_evaluate_chasm_map(needed_coords)
 	
 	# 1. Spawn missing tiles
@@ -136,6 +154,31 @@ func _update_streaming_rings(center_coord: Vector2i) -> void:
 	
 	for coord: Vector2i in to_remove:
 		_despawn_tile_at(coord)
+
+## Computes asymmetric isometric hex cluster with extended render depth to the North
+func get_asymmetric_isometric_cluster(center_world: Vector3, center_coord: Vector2i) -> Array[Vector2i]:
+	var results: Array[Vector2i] = []
+	var scan_radius: int = 8 # Scan window
+	
+	for q: int in range(-scan_radius, scan_radius + 1):
+		for r: int in range(-scan_radius, scan_radius + 1):
+			var cand_coord: Vector2i = center_coord + Vector2i(q, r)
+			var cand_world: Vector3 = axial_to_world_pos(cand_coord)
+			var rel_vec: Vector3 = cand_world - center_world
+			
+			# Project relative vector along isometric view axes
+			var d_forward: float = rel_vec.dot(VIEW_FORWARD) # Positive = North (screen up)
+			var d_lateral: float = absf(rel_vec.dot(VIEW_RIGHT)) # Lateral width
+			var direct_dist: float = rel_vec.length()
+			
+			# Asymmetric frustum test: deep North (58m), wide lateral (34m), shallow South (16m), or close proximity (18m)
+			var in_frustum: bool = (d_forward >= -rear_render_depth_m) and (d_forward <= forward_render_depth_m) and (d_lateral <= lateral_render_width_m)
+			var in_proximity: bool = direct_dist <= 18.0
+			
+			if in_frustum or in_proximity:
+				results.append(cand_coord)
+				
+	return results
 
 func _pre_evaluate_chasm_map(coords: Array[Vector2i]) -> void:
 	var hill_noise: FastNoiseLite = FastNoiseLite.new()
@@ -211,7 +254,7 @@ func _evaluate_hot_spring_spawn(coord: Vector2i) -> bool:
 	for offset: Vector2i in adjacent_offsets:
 		if _hot_spring_registry.get(coord + offset, false) == true:
 			_hot_spring_registry[coord] = false
-			return false # 0% probability on adjacent hexes to prevent overlapping
+			return false
 			
 	# 2. Check 1-hex separated neighbors (Distance 2)
 	var ring2_offsets: Array[Vector2i] = [
@@ -265,13 +308,12 @@ func _generate_connected_railroad_corridor() -> void:
 		var world_pos: Vector3 = tile.position
 		astar.add_point(id_counter, Vector2(world_pos.x, world_pos.z))
 		
-		# Set point weight (avoid hot springs and crevasses)
 		var is_spring: bool = _hot_spring_registry.get(coord, false)
 		var is_chasm: bool = _chasm_registry.get(coord, false)
 		if is_spring:
-			astar.set_point_weight_scale(id_counter, 150.0) # Avoid steaming pools
+			astar.set_point_weight_scale(id_counter, 150.0)
 		elif is_chasm:
-			astar.set_point_weight_scale(id_counter, 100.0) # Avoid deep chasm floors
+			astar.set_point_weight_scale(id_counter, 100.0)
 		else:
 			astar.set_point_weight_scale(id_counter, 1.0)
 			
@@ -295,13 +337,9 @@ func _generate_connected_railroad_corridor() -> void:
 					astar.connect_points(u_id, v_id)
 	
 	# 3. Select entry and exit boundary points across the sector
-	var start_coord: Vector2i = Vector2i(-render_radius_rings, 0)
-	var end_coord: Vector2i = Vector2i(render_radius_rings, 0)
-	
-	if not coord_to_id.has(start_coord) or not coord_to_id.has(end_coord):
-		var all_coords: Array = _active_tiles.keys()
-		start_coord = all_coords[0]
-		end_coord = all_coords[all_coords.size() - 1]
+	var all_coords: Array = _active_tiles.keys()
+	var start_coord: Vector2i = all_coords[0]
+	var end_coord: Vector2i = all_coords[all_coords.size() - 1]
 	
 	var start_id: int = coord_to_id[start_coord]
 	var end_id: int = coord_to_id[end_coord]
@@ -400,7 +438,7 @@ func _spawn_abandoned_train_car(pos: Vector3, forward_dir: Vector3) -> void:
 	box.size = Vector3(2.2, 2.0, 5.5)
 	car_mesh.mesh = box
 	var rust_mat: StandardMaterial3D = StandardMaterial3D.new()
-	rust_mat.albedo_color = Color(0.55, 0.28, 0.20, 1.0) # Rusted Corpo freight car
+	rust_mat.albedo_color = Color(0.55, 0.28, 0.20, 1.0)
 	rust_mat.metallic = 0.5
 	rust_mat.roughness = 0.75
 	car_mesh.material_override = rust_mat

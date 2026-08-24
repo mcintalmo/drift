@@ -105,9 +105,9 @@ func _update_streaming_rings(center_coord: Vector2i) -> void:
 		_despawn_tile_at(coord)
 
 func _pre_evaluate_chasm_map(coords: Array[Vector2i]) -> void:
-	var plateau_noise: FastNoiseLite = FastNoiseLite.new()
-	plateau_noise.seed = world_seed + 7771
-	plateau_noise.frequency = 0.012
+	var hill_noise: FastNoiseLite = FastNoiseLite.new()
+	hill_noise.seed = world_seed + 7771
+	hill_noise.frequency = 0.009
 	var r_outer: float = biome_data.get("hex_cell_outer_radius_m") if "hex_cell_outer_radius_m" in biome_data else 6.0
 	var c_thresh: float = biome_data.get("chasm_threshold") if "chasm_threshold" in biome_data else -0.32
 	
@@ -115,7 +115,7 @@ func _pre_evaluate_chasm_map(coords: Array[Vector2i]) -> void:
 		if not _chasm_registry.has(coord):
 			var wx: float = r_outer * SQRT_3 * (float(coord.x) + float(coord.y) * 0.5)
 			var wz: float = r_outer * 1.5 * float(coord.y)
-			var p_val: float = plateau_noise.get_noise_2d(wx, wz)
+			var p_val: float = hill_noise.get_noise_2d(wx, wz)
 			_chasm_registry[coord] = (p_val < c_thresh)
 
 func _spawn_tile_at(coord: Vector2i) -> void:
@@ -148,7 +148,6 @@ func _check_chasm_adjacency_ramp(coord: Vector2i) -> Dictionary:
 		Vector2i(-1, 0), Vector2i(-1, 1), Vector2i(0, 1)
 	]
 	
-	var r_outer: float = biome_data.get("hex_cell_outer_radius_m") if "hex_cell_outer_radius_m" in biome_data else 6.0
 	var my_pos: Vector3 = axial_to_world_pos(coord)
 	
 	for offset: Vector2i in neighbors_offsets:
@@ -281,40 +280,33 @@ func _generate_connected_railroad_corridor() -> void:
 	for p_id: int in path_ids:
 		_railroad_path.append(id_to_coord[p_id])
 	
-	# 4. Construct continuous connected visual track segments
-	var r_outer: float = biome_data.get("hex_cell_outer_radius_m") if "hex_cell_outer_radius_m" in biome_data else 6.0
-	
-	for idx: int in range(_railroad_path.size()):
-		var cur_coord: Vector2i = _railroad_path[idx]
-		var cur_tile: Node3D = _active_tiles[cur_coord]
-		var cur_pos: Vector3 = cur_tile.position
+	# 4. Construct continuous connected 3D track segments between path nodes
+	for idx: int in range(_railroad_path.size() - 1):
+		var cur_pos: Vector3 = _active_tiles[_railroad_path[idx]].position
+		var next_pos: Vector3 = _active_tiles[_railroad_path[idx + 1]].position
 		
-		# Compute track tangent orientation from neighbors in path
-		var dir: Vector3 = Vector3.FORWARD
-		if idx < _railroad_path.size() - 1:
-			var next_pos: Vector3 = _active_tiles[_railroad_path[idx + 1]].position
-			dir = (next_pos - cur_pos).normalized()
-		elif idx > 0:
-			var prev_pos: Vector3 = _active_tiles[_railroad_path[idx - 1]].position
-			dir = (cur_pos - prev_pos).normalized()
-		
-		_build_rail_segment(cur_pos, dir, r_outer)
+		_build_rail_segment_3d(cur_pos, next_pos)
 		
 		# Place 1 abandoned train car on middle segment
-		if idx == int(_railroad_path.size() / 2):
-			_spawn_abandoned_train_car(cur_pos, dir)
+		if idx == int((_railroad_path.size() - 1) / 2):
+			var dir_3d: Vector3 = (next_pos - cur_pos).normalized()
+			var mid_pos: Vector3 = (cur_pos + next_pos) * 0.5
+			_spawn_abandoned_train_car(mid_pos, dir_3d)
 			
 	railroad_generated.emit(_railroad_path.size())
 
-func _build_rail_segment(pos: Vector3, forward_dir: Vector3, radius: float) -> void:
+func _build_rail_segment_3d(from_pos: Vector3, to_pos: Vector3) -> void:
 	var segment: Node3D = Node3D.new()
 	segment.name = "RailSegment"
-	segment.position = pos + Vector3(0, 0.08, 0)
 	
-	var rot_y: float = atan2(forward_dir.x, forward_dir.z)
-	segment.rotation.y = rot_y
+	var mid_pos: Vector3 = (from_pos + to_pos) * 0.5 + Vector3(0, 0.08, 0)
+	var dir_3d: Vector3 = (to_pos - from_pos).normalized()
+	var track_len: float = from_pos.distance_to(to_pos) * 1.02
 	
-	var track_len: float = radius * SQRT_3 * 1.05
+	segment.position = mid_pos
+	var rot_y: float = atan2(dir_3d.x, dir_3d.z)
+	var pitch_x: float = -asin(clampf(dir_3d.y, -0.9, 0.9))
+	segment.rotation = Vector3(pitch_x, rot_y, 0)
 	
 	# Gravel Ballast Bed
 	var ballast: MeshInstance3D = MeshInstance3D.new()
@@ -363,7 +355,10 @@ func _spawn_abandoned_train_car(pos: Vector3, forward_dir: Vector3) -> void:
 	var car: StaticBody3D = StaticBody3D.new()
 	car.name = "AbandonedRailCar"
 	car.position = pos + Vector3(0, 1.4, 0)
-	car.rotation.y = atan2(forward_dir.x, forward_dir.z)
+	
+	var rot_y: float = atan2(forward_dir.x, forward_dir.z)
+	var pitch_x: float = -asin(clampf(forward_dir.y, -0.9, 0.9))
+	car.rotation = Vector3(pitch_x, rot_y, 0)
 	car.collision_layer = 1
 	car.collision_mask = 6
 	

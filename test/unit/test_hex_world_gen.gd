@@ -91,8 +91,13 @@ func _test_adjacent_hex_vertex_exact_match() -> Dictionary:
 	noise.frequency = biome.elevation_frequency
 	var amp: float = biome.elevation_amplitude
 	
-	var corners_a: Array[float] = tile_a._compute_corner_heights(tile_a.position.x, tile_a.position.z, noise, amp)
-	var corners_b: Array[float] = tile_b._compute_corner_heights(tile_b.position.x, tile_b.position.z, noise, amp)
+	var hill_noise: FastNoiseLite = FastNoiseLite.new()
+	hill_noise.seed = 4281 + 7771
+	hill_noise.frequency = 0.009
+	var hill_amp: float = 3.8
+	
+	var corners_a: Array[float] = tile_a._compute_continuous_corner_heights(tile_a.position.x, tile_a.position.z, noise, amp, hill_noise, hill_amp)
+	var corners_b: Array[float] = tile_b._compute_continuous_corner_heights(tile_b.position.x, tile_b.position.z, noise, amp, hill_noise, hill_amp)
 	
 	var world_y_a0: float = tile_a.position.y + corners_a[0]
 	var world_y_b2: float = tile_b.position.y + corners_b[2]
@@ -150,7 +155,11 @@ func _test_chasm_jump_ramp_generation() -> Dictionary:
 	var noise: FastNoiseLite = FastNoiseLite.new()
 	noise.seed = 1337
 	noise.frequency = biome.elevation_frequency
-	var corners: Array[float] = tile._compute_corner_heights(tile.position.x, tile.position.z, noise, biome.elevation_amplitude)
+	var hill_noise: FastNoiseLite = FastNoiseLite.new()
+	hill_noise.seed = 1337 + 7771
+	hill_noise.frequency = 0.009
+	
+	var corners: Array[float] = tile._compute_continuous_corner_heights(tile.position.x, tile.position.z, noise, biome.elevation_amplitude, hill_noise, 3.8)
 	
 	# East corner (index 0 at +30 deg) should have positive kicker elevation compared to approach
 	var east_kicker: float = corners[0]

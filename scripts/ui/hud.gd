@@ -35,10 +35,10 @@ func _ready() -> void:
 			show_banner("TRAIN CAR #%d DECOUPLED!" % car_idx)
 		)
 		GlobalEvents.instance.pilot_mounted_sled.connect(func(_sled: Node) -> void:
-			show_banner("MOUNTED IN SLED - [Q/E] LEAN - [SPACE] DRIFT - [F] DISMOUNT")
+			show_banner("MOUNTED IN SLED - [W/A/S/D] DRIVE - [SPACE] DRIFT - [G / RMB] WINCH - [F] DISMOUNT")
 		)
 		GlobalEvents.instance.pilot_dismounted_sled.connect(func(_sled: Node) -> void:
-			show_banner("ON FOOT - [SPACE] JETPACK - [LMB] BREACH - [G] GRAPPLE")
+			show_banner("ON FOOT - [SPACE] JETPACK - [LMB] BREACH - [G / RMB] GRAPPLE - [F] MOUNT")
 		)
 		
 	_setup_train_tracker_ui()

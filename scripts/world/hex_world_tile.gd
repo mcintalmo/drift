@@ -11,6 +11,7 @@ const SectorBiomeDataClass = preload("res://scripts/resources/sector_biome_data.
 @export var base_elevation_m: float = 0.0
 @export var is_hot_spring: bool = false
 @export var is_glacial_chasm: bool = false
+@export var is_plateau_cliff: bool = false
 
 var _static_body: StaticBody3D
 var _mesh_instance: MeshInstance3D
@@ -23,7 +24,7 @@ func _ready() -> void:
 	if not _static_body:
 		_build_tile_geometry([])
 
-## Initializes the hex tile with smooth big hills, macro plateau tiers, and sheer glacial chasm cliffs
+## Initializes the hex tile with smooth rideable hills, discrete plateau tiers, and 90-degree straight vertical cliffs
 func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring_flag: bool = false) -> void:
 	axial_coord = coord
 	biome_data = biome if biome else SectorBiomeDataClass.new()
@@ -34,7 +35,7 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 	var world_x: float = tile_outer_radius_m * SQRT_3 * (float(coord.x) + float(coord.y) * 0.5)
 	var world_z: float = tile_outer_radius_m * 1.5 * float(coord.y)
 	
-	# 1. Gentle, smooth rolling base elevation noise
+	# 1. Gentle continuous rolling base elevation (creates smooth rolling hills)
 	var base_noise: FastNoiseLite = FastNoiseLite.new()
 	base_noise.seed = seed_val
 	var freq: float = biome_data.get("elevation_frequency") if "elevation_frequency" in biome_data else 0.012
@@ -42,20 +43,23 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 	base_noise.frequency = freq
 	base_elevation_m = base_noise.get_noise_2d(world_x, world_z) * amp
 	
-	# 2. Big Hill / Plateau Tiering (Ride-downable slopes)
+	# 2. Discrete Macro Plateau / Chasm Tiers (Forms 100% straight vertical cliffs)
 	var plateau_noise: FastNoiseLite = FastNoiseLite.new()
 	plateau_noise.seed = seed_val + 7771
 	plateau_noise.frequency = 0.008
 	var p_val: float = plateau_noise.get_noise_2d(world_x, world_z)
 	var p_thresh: float = biome_data.get("plateau_threshold") if "plateau_threshold" in biome_data else 0.28
 	var tier_h: float = biome_data.get("plateau_tier_height_m") if "plateau_tier_height_m" in biome_data else 3.5
+	
+	var macro_tier_offset: float = 0.0
 	if p_val > p_thresh:
-		base_elevation_m += tier_h # Big hill plateau tier (smooth ride-downable slope)
+		is_plateau_cliff = true
+		macro_tier_offset = tier_h # Elevated plateau tier with straight vertical cliff walls
 	elif p_val < -0.38 and not is_hot_spring:
 		is_glacial_chasm = true
-		base_elevation_m -= 6.5 # Sheer glacial gorge chasm
+		macro_tier_offset = -6.5 # Sunken glacial gorge with straight vertical chasm walls
 		
-	position = Vector3(world_x, base_elevation_m, world_z)
+	position = Vector3(world_x, base_elevation_m + macro_tier_offset, world_z)
 	
 	if is_hot_spring:
 		surface_type = &"slush"
@@ -68,14 +72,14 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 		else:
 			surface_type = &"pack"
 	
-	# Compute exact continuous corner vertex heights in world space
-	_cached_corner_heights = _compute_continuous_corner_heights(world_x, world_z, base_noise, amp, plateau_noise, p_thresh, tier_h)
+	# Corner heights only sample continuous rolling hill noise (keeps tile surface smooth and clean)
+	_cached_corner_heights = _compute_continuous_corner_heights(world_x, world_z, base_noise, amp)
 	
 	_build_tile_geometry(_cached_corner_heights)
 	_spawn_procedural_features(seed_val)
 
-## Evaluates continuous world-space noise height at the 6 exact corner vertex coordinates
-func _compute_continuous_corner_heights(center_x: float, center_z: float, base_noise: FastNoiseLite, amp: float, plateau_noise: FastNoiseLite, p_thresh: float, tier_h: float) -> Array[float]:
+## Evaluates continuous world-space rolling noise height at the 6 corner vertices
+func _compute_continuous_corner_heights(center_x: float, center_z: float, base_noise: FastNoiseLite, amp: float) -> Array[float]:
 	var corner_heights: Array[float] = []
 	
 	for i: int in range(6):
@@ -83,17 +87,10 @@ func _compute_continuous_corner_heights(center_x: float, center_z: float, base_n
 		var corner_world_x: float = center_x + (tile_outer_radius_m * cos(angle_rad))
 		var corner_world_z: float = center_z + (tile_outer_radius_m * sin(angle_rad))
 		
-		# Sample continuous base elevation
+		# Sample continuous base rolling elevation
 		var corner_world_elevation: float = base_noise.get_noise_2d(corner_world_x, corner_world_z) * amp
 		
-		# Sample plateau tier at this exact corner coordinate (big hill slope)
-		var p_val: float = plateau_noise.get_noise_2d(corner_world_x, corner_world_z)
-		if p_val > p_thresh:
-			corner_world_elevation += tier_h
-		elif p_val < -0.38 and not is_hot_spring:
-			corner_world_elevation -= 6.5
-			
-		# Relative Y height offset in this tile's local coordinate space
+		# Relative Y height offset in this tile's local space
 		var local_y: float = corner_world_elevation - base_elevation_m
 		corner_heights.append(local_y)
 		
@@ -110,7 +107,7 @@ func _build_tile_geometry(corner_heights: Array[float]) -> void:
 	_static_body.set_meta(&"surface_type", surface_type)
 	add_child(_static_body)
 	
-	var depth: float = 8.0 if is_glacial_chasm else 4.0
+	var depth: float = 9.0 if (is_glacial_chasm or is_plateau_cliff) else 5.0
 	var hex_mesh: ArrayMesh = _generate_model_c_mesh(tile_outer_radius_m, depth, corner_heights)
 	
 	_mesh_instance = MeshInstance3D.new()
@@ -138,9 +135,10 @@ func _generate_model_c_mesh(radius: float, depth: float, corner_heights: Array[f
 		var vz: float = radius * sin(angle_rad)
 		var vy: float = corner_heights[i] if i < corner_heights.size() else 0.0
 		top_vertices.append(Vector3(vx, vy, vz))
+		# Bottom vertices are straight down vertically at identical X/Z coordinates
 		bottom_vertices.append(Vector3(vx, -depth, vz))
 	
-	# Center Vertex: gentle shallow basin if hot spring (-0.9m), level if normal terrain
+	# Center Vertex: shallow basin if hot spring (-0.9m), level if normal terrain
 	var center_y: float = -0.9 if is_hot_spring else 0.0
 	var top_center: Vector3 = Vector3(0.0, center_y, 0.0)
 	var bottom_center: Vector3 = Vector3(0.0, -depth, 0.0)
@@ -160,7 +158,7 @@ func _generate_model_c_mesh(radius: float, depth: float, corner_heights: Array[f
 		st.set_normal(face_normal)
 		st.add_vertex(v3)
 	
-	# Side Skirts (Cliff Walls down to depth)
+	# Side Skirts (100% straight vertical 90-degree cliff walls dropping down to depth)
 	for i: int in range(6):
 		var next_i: int = (i + 1) % 6
 		var t1: Vector3 = top_vertices[i]
@@ -196,6 +194,10 @@ func _create_surface_material(surface: StringName) -> StandardMaterial3D:
 		mat.albedo_color = Color(0.18, 0.28, 0.38, 1.0) # Deep glacial chasm basalt
 		mat.roughness = 0.4
 		mat.metallic = 0.3
+		return mat
+	elif is_plateau_cliff:
+		mat.albedo_color = Color(0.82, 0.88, 0.94, 1.0) # Low-poly snow plateau with exposed rock
+		mat.roughness = 0.6
 		return mat
 		
 	match surface:

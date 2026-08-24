@@ -17,7 +17,6 @@ const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 @export_group("Terrain & Prop See-Through Occlusion")
 @export var is_terrain_see_through_enabled: bool = true
 @export var occluded_transparency_alpha: float = 0.28
-@export var sight_cylinder_radius_m: float = 1.6
 @export var fade_in_speed: float = 10.0
 @export var fade_out_speed: float = 5.0
 @export var min_occlusion_clearance_y_m: float = 0.35
@@ -79,7 +78,7 @@ func _physics_process(delta: float) -> void:
 	if is_terrain_see_through_enabled and target_node and camera_3d:
 		_update_terrain_occlusion(delta)
 
-## Multi-piercing line-of-sight raycasting with ground filtering and shadow depth preservation
+## Multi-piercing line-of-sight raycasting strictly targeted on sled hull points with solid shadow preservation
 func _update_terrain_occlusion(delta: float) -> void:
 	var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	if not space_state:
@@ -93,24 +92,20 @@ func _update_terrain_occlusion(delta: float) -> void:
 	if cam_to_target_dist < 1.0:
 		return
 	
-	# Camera view-plane basis for spatial cylinder rays around current sled position
-	var cam_right: Vector3 = camera_3d.global_transform.basis.x.normalized()
-	var cam_up: Vector3 = camera_3d.global_transform.basis.y.normalized()
+	# Compute sled local basis vectors (strictly bounded to physical vehicle chassis extents)
+	var sled_basis: Basis = target_node.global_transform.basis
+	var sled_forward: Vector3 = -sled_basis.z.normalized()
+	var sled_right: Vector3 = sled_basis.x.normalized()
 	
-	# Spatial cylinder ray targets: Center core (1.0 weight) + radial proximity envelope
+	# Ray targets are strictly placed ON the sled's physical hull bounds (never outside in adjacent walls)
 	var ray_targets: Array[Dictionary] = [
-		{"pos": target_center, "weight": 1.0} # Direct center sightline
+		{"pos": target_center, "weight": 1.0}, # Direct central chassis core
+		{"pos": target_center + sled_forward * 0.7, "weight": 0.90}, # Sled nose
+		{"pos": target_center - sled_forward * 0.7, "weight": 0.90}, # Sled tail
+		{"pos": target_center + sled_right * 0.35, "weight": 0.85}, # Right rail
+		{"pos": target_center - sled_right * 0.35, "weight": 0.85}, # Left rail
+		{"pos": target_center + Vector3(0, 0.45, 0), "weight": 0.90} # Cabin / Pilot height
 	]
-	
-	# 6-point radial proximity ring elevated above floor
-	var r: float = sight_cylinder_radius_m
-	for i: int in range(6):
-		var angle_rad: float = deg_to_rad(60.0 * float(i))
-		var offset_3d: Vector3 = (cam_right * (cos(angle_rad) * r)) + (cam_up * (sin(angle_rad) * (r * 0.75)))
-		ray_targets.append({
-			"pos": target_center + offset_3d,
-			"weight": 0.85
-		})
 	
 	# Map to aggregate maximum occlusion weight per material: StandardMaterial3D -> max_weight
 	var active_materials_weight: Dictionary = {}
@@ -124,10 +119,10 @@ func _update_terrain_occlusion(delta: float) -> void:
 		var ray_weight: float = entry["weight"]
 		var ray_dist: float = cam_pos.distance_to(ray_dest)
 		
-		# Piercing multi-hit raycast strictly along this line of sight
+		# Piercing multi-hit raycast strictly along this line of sight to the sled body
 		var exclude_list: Array[RID] = base_exclude.duplicate()
 		
-		for _hit_step in range(8): # Pierces through all cascaded hills/props along line of sight
+		for _hit_step in range(8):
 			var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(cam_pos, ray_dest, 1) # Layer 1 = World Terrain & Props
 			query.exclude = exclude_list
 			
@@ -143,7 +138,7 @@ func _update_terrain_occlusion(delta: float) -> void:
 			if collider is CollisionObject3D:
 				exclude_list.append((collider as CollisionObject3D).get_rid())
 			
-			# 1. Reject ground/floor surfaces beneath and around sled (prevents floor from fading in corners)
+			# 1. Reject ground/floor surfaces beneath and around sled
 			var is_floor_contact: bool = (hit_normal.y > floor_normal_threshold_y) and (hit_pos.y <= sled_floor_y + min_occlusion_clearance_y_m)
 			if is_floor_contact:
 				continue
@@ -152,8 +147,8 @@ func _update_terrain_occlusion(delta: float) -> void:
 			if hit_pos.y <= sled_floor_y + 0.15:
 				continue
 			
-			# 3. Must be situated significantly between camera and target (at least 1.4m away from target)
-			if hit_dist < (ray_dist - 1.4):
+			# 3. Must be situated in the foreground between camera and target (at least 1.6m in front of vehicle)
+			if hit_dist < (ray_dist - 1.6):
 				if collider is Node:
 					var mats: Array[StandardMaterial3D] = []
 					_collect_mesh_materials(collider as Node, mats)
@@ -163,11 +158,11 @@ func _update_terrain_occlusion(delta: float) -> void:
 			else:
 				break
 	
-	# Register newly discovered occluding materials with DEPTH_DRAW_ALWAYS to preserve full 3D shadow casting
+	# Register newly discovered occluding materials with ALPHA_HASH + DEPTH_DRAW_ALWAYS to preserve 100% full 3D shadow map casting
 	for mat: StandardMaterial3D in active_materials_weight:
 		if not _occluded_materials.has(mat):
-			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS # Keeps shadow depth intact!
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_HASH # Screen-door dither transparency preserves solid shadows!
+			mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS # Guaranteed depth and shadow map rendering
 			_occluded_materials[mat] = 1.0
 	
 	# Smoothly interpolate alpha based on proximity weight

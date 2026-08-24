@@ -16,6 +16,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_hot_spring_basin_creation())
 	results.append(_test_chasm_jump_ramp_generation())
 	results.append(_test_procedural_connected_railroad())
+	results.append(_test_macro_trans_sector_railroad())
 	results.append(_test_sector_manager_streaming_and_pooling())
 	results.append(_test_mounted_sled_streaming_target())
 	return results
@@ -65,7 +66,6 @@ func _test_asymmetric_isometric_cluster() -> Dictionary:
 	
 	var cluster: Array[Vector2i] = mgr.get_asymmetric_isometric_cluster(Vector3.ZERO, Vector2i.ZERO)
 	
-	# Check that deep North coordinates exist (e.g. (-4, -4) or (-5, -5))
 	var has_deep_north: bool = false
 	var north_count: int = 0
 	var south_count: int = 0
@@ -184,7 +184,6 @@ func _test_chasm_jump_ramp_generation() -> Dictionary:
 	var biome: SectorBiomeData = SectorBiomeData.new()
 	biome.hex_cell_outer_radius_m = 6.0
 	
-	# Initialize tile as a jump ramp pointing East (Vector2(1, 0))
 	tile.initialize_tile(Vector2i(0, 0), biome, 1337, false, true, Vector2(1, 0))
 	
 	var is_ramp_flag: bool = tile.is_jump_ramp
@@ -214,20 +213,52 @@ func _test_chasm_jump_ramp_generation() -> Dictionary:
 func _test_procedural_connected_railroad() -> Dictionary:
 	var mgr: HexSectorManager = HexSectorManager.new()
 	mgr.biome_data = SectorBiomeData.new()
-	mgr.render_radius_rings = 2
+	mgr.drop_off_coord = Vector2i(0, 0)
+	mgr.extraction_coord = Vector2i(5, -5)
 	mgr.is_procedural_railroad_enabled = true
 	mgr.is_dynamic_streaming_enabled = false
 	
-	mgr.generate_initial_sector(Vector2i.ZERO)
+	mgr._plan_macro_railroad_corridor(mgr.drop_off_coord, mgr.extraction_coord)
 	var rail_path: Array[Vector2i] = mgr.get_railroad_path()
 	
-	var passed: bool = rail_path.size() >= 3
+	var passed: bool = rail_path.size() >= 5 and (rail_path[0] == Vector2i(0, 0)) and (rail_path[rail_path.size() - 1] == Vector2i(5, -5))
 	
 	mgr.free()
 	return {
 		"name": "test_procedural_connected_railroad",
 		"passed": passed,
 		"message": "Procedural connected railroad corridor generated with %d consecutive hex nodes" % rail_path.size()
+	}
+
+func _test_macro_trans_sector_railroad() -> Dictionary:
+	var mgr: HexSectorManager = HexSectorManager.new()
+	mgr.biome_data = SectorBiomeData.new()
+	mgr.drop_off_coord = Vector2i(0, 0)
+	mgr.extraction_coord = Vector2i(25, -25) # ~400m trans-sector line across dozens of chunks
+	mgr.is_procedural_railroad_enabled = true
+	mgr.is_dynamic_streaming_enabled = false
+	
+	mgr._plan_macro_railroad_corridor(mgr.drop_off_coord, mgr.extraction_coord)
+	var path: Array[Vector2i] = mgr.get_railroad_path()
+	
+	# Spawn initial chunk around Drop-Off (0, 0)
+	mgr.generate_initial_sector(Vector2i(0, 0))
+	var origin_tile_has_rail: bool = mgr._active_rail_segments.has(Vector2i(0, 0))
+	
+	# Stream chunk to mid-point on the actual path
+	var mid_coord: Vector2i = path[int(path.size() / 2)]
+	mgr.generate_initial_sector(mid_coord)
+	var mid_tile_has_rail: bool = mgr._active_rail_segments.has(mid_coord)
+	
+	var passed: bool = (path.size() >= 25) and origin_tile_has_rail and mid_tile_has_rail
+	
+	mgr.free()
+	return {
+		"name": "test_macro_trans_sector_railroad",
+		"passed": passed,
+		"message": "Macro railroad spans %d hex nodes across continent (Streamed 3D segments active at origin: %s, mid: %s)" % [
+			path.size(), str(origin_tile_has_rail), str(mid_tile_has_rail)
+		]
 	}
 
 func _test_sector_manager_streaming_and_pooling() -> Dictionary:

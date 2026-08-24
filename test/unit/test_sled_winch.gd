@@ -8,6 +8,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_tensile_break_threshold())
 	results.append(_test_sled_winch_moving_train_tether())
 	results.append(_test_remote_sled_winch_detach())
+	results.append(_test_sled_towed_acceleration_behind_train())
 	return results
 
 func _test_spring_force_zero_at_rest_length() -> Dictionary:
@@ -84,9 +85,9 @@ func _test_tensile_break_threshold() -> Dictionary:
 func _test_sled_winch_moving_train_tether() -> Dictionary:
 	var winch: SledWinchComponent = SledWinchComponent.new()
 	winch.winch_data = WinchData.new()
-	winch.winch_data.spring_constant_k = 150.0
-	winch.winch_data.damping_coefficient_c = 0.0
-	winch.winch_data.tensile_limit_force = 2500.0 # High tensile cable
+	winch.winch_data.spring_constant_k = 650.0
+	winch.winch_data.damping_coefficient_c = 28.0
+	winch.winch_data.tensile_limit_force = 5500.0 # High tensile cable
 	
 	var anchor: GrappleAnchorComponent = GrappleAnchorComponent.new()
 	anchor.anchor_type = GrappleAnchorComponent.AnchorType.TRAIN_CAR
@@ -97,7 +98,7 @@ func _test_sled_winch_moving_train_tether() -> Dictionary:
 	anchor.position = Vector3(0.0, 1.0, 14.0)
 	var force: Vector3 = winch.compute_tether_force(0.016, Vector3.ZERO)
 	
-	var passed: bool = force.z > 400.0 and winch.is_tethered
+	var passed: bool = force.z > 1000.0 and winch.is_tethered
 	
 	winch.free()
 	anchor.free()
@@ -127,4 +128,40 @@ func _test_remote_sled_winch_detach() -> Dictionary:
 		"name": "test_remote_sled_winch_detach",
 		"passed": passed,
 		"message": "Remote winch detach cleared tether state successfully (passed: %s)" % str(passed)
+	}
+
+func _test_sled_towed_acceleration_behind_train() -> Dictionary:
+	var sled: CharacterBody3D = CharacterBody3D.new()
+	var drift: InertialDriftComponent = InertialDriftComponent.new()
+	drift.stats = SledStatsData.new()
+	drift.runners = RunnerData.new()
+	drift.engine = EngineData.new()
+	drift.target_body = sled
+	
+	var winch: SledWinchComponent = SledWinchComponent.new()
+	winch.parent_body = sled
+	
+	var anchor: GrappleAnchorComponent = GrappleAnchorComponent.new()
+	anchor.anchor_type = GrappleAnchorComponent.AnchorType.TRAIN_CAR
+	anchor.position = Vector3(0.0, 0.0, 10.0)
+	winch.attach_to_anchor(anchor)
+	
+	# Simulate train accelerating forward along +Z at 14 m/s over 30 frames
+	for frame in range(30):
+		var dt: float = 1.0 / 60.0
+		anchor.position.z += 14.0 * dt
+		var spring_force: Vector3 = winch.compute_tether_force(dt, drift.velocity_3d)
+		drift.update_physics(dt, 0.0, 0.0, false, 0.0, spring_force)
+		
+	var final_speed: float = drift.velocity_3d.length()
+	var passed: bool = final_speed > 4.0 and winch.is_tethered
+	
+	sled.free()
+	drift.free()
+	winch.free()
+	anchor.free()
+	return {
+		"name": "test_sled_towed_acceleration_behind_train",
+		"passed": passed,
+		"message": "Sled accelerated to %.1f m/s behind moving train anchor (passed: %s)" % [final_speed, str(passed)]
 	}

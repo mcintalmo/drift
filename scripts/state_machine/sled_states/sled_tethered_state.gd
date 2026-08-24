@@ -31,5 +31,11 @@ func physics_update(delta: float) -> void:
 	# Calculate spring tension force from cable
 	var spring_force: Vector3 = winch_component.compute_tether_force(delta, drift_component.velocity_3d)
 	
+	# Towing alignment: tension pulls sled heading in the direction of the cable
+	if spring_force.length() > 40.0:
+		var pull_dir_horiz: Vector3 = Vector3(spring_force.x, 0.0, spring_force.z).normalized()
+		var target_yaw: float = atan2(-pull_dir_horiz.x, -pull_dir_horiz.z)
+		drift_component.heading_angle_rad = lerp_angle(drift_component.heading_angle_rad, target_yaw, 4.0 * delta)
+	
 	# Apply physics with external spring force
 	drift_component.update_physics(delta, throttle, steer, drift, lean, spring_force)

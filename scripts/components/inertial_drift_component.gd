@@ -145,8 +145,8 @@ func update_physics(
 		
 		velocity_3d += accel * delta
 		
-		# Coasting deceleration
-		if is_zero_approx(throttle_input):
+		# Coasting deceleration when not actively throttled and not externally towed
+		if is_zero_approx(throttle_input) and external_force.length() < 25.0:
 			var coast_friction: float = current_friction.y * 3.0
 			velocity_3d = velocity_3d.move_toward(Vector3.ZERO, coast_friction * GRAVITY * delta)
 		
@@ -167,8 +167,9 @@ func update_physics(
 		velocity_3d.z = move_toward(velocity_3d.z, 0.0, 0.5 * delta)
 	
 	target_body.velocity = velocity_3d
-	target_body.move_and_slide()
-	velocity_3d = target_body.velocity
+	if target_body.is_inside_tree():
+		target_body.move_and_slide()
+		velocity_3d = target_body.velocity
 	
 	# 7. Attitude Dynamics (Roll & Slope/Airborne Pitch)
 	_update_attitude_dynamics(delta, forward_yaw, ground_normal)

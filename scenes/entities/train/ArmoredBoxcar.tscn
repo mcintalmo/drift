@@ -1,0 +1,132 @@
+[gd_scene format=3 uid="uid://c8m2p9wlap17v"]
+
+[ext_resource type="Script" path="res://scripts/entities/world/train_car.gd" id="1_train_car"]
+[ext_resource type="Script" path="res://scripts/components/health_component.gd" id="2_health"]
+[ext_resource type="Script" path="res://scripts/components/hurtbox_component.gd" id="3_hurtbox"]
+[ext_resource type="Script" path="res://scripts/components/grapple_anchor_component.gd" id="4_anchor"]
+[ext_resource type="PackedScene" path="res://scenes/containers/GroundCrate.tscn" id="5_crate"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_car"]
+size = Vector3(3.2, 3.6, 8.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rust"]
+albedo_color = Color(0.48, 0.26, 0.18, 1)
+metallic = 0.55
+roughness = 0.7
+
+[sub_resource type="BoxMesh" id="BoxMesh_body"]
+material = SubResource("StandardMaterial3D_rust")
+size = Vector3(3.0, 3.2, 8.2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_door"]
+albedo_color = Color(0.32, 0.35, 0.38, 1)
+metallic = 0.8
+roughness = 0.45
+
+[sub_resource type="BoxMesh" id="BoxMesh_door"]
+material = SubResource("StandardMaterial3D_door")
+size = Vector3(0.15, 2.6, 2.8)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mag_lock"]
+albedo_color = Color(0.9, 0.2, 0.1, 1)
+emission_enabled = true
+emission = Color(1, 0.15, 0.1, 1)
+emission_energy_multiplier = 4.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_lock"]
+material = SubResource("StandardMaterial3D_mag_lock")
+size = Vector3(0.35, 0.35, 0.35)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_lock_hurtbox"]
+size = Vector3(0.6, 0.6, 0.6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_coupler"]
+albedo_color = Color(0.9, 0.4, 0.1, 1)
+emission_enabled = true
+emission = Color(1, 0.45, 0.05, 1)
+emission_energy_multiplier = 4.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_coupler"]
+material = SubResource("StandardMaterial3D_coupler")
+size = Vector3(0.5, 0.4, 0.6)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_coupler_col"]
+size = Vector3(0.8, 0.8, 0.8)
+
+[node name="ArmoredBoxcar" type="AnimatableBody3D" groups=["train_convoy"]]
+collision_layer = 1
+collision_mask = 7
+sync_to_physics = true
+script = ExtResource("1_train_car")
+car_length_m = 8.5
+car_width_m = 3.2
+car_height_m = 3.6
+
+[node name="BoxcarCollision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 0)
+shape = SubResource("BoxShape3D_car")
+
+[node name="VisualModel" type="Node3D" parent="."]
+
+[node name="BodyMesh" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
+mesh = SubResource("BoxMesh_body")
+
+[node name="LeftSlidingDoor" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.55, 1.5, 0)
+mesh = SubResource("BoxMesh_door")
+
+[node name="RightSlidingDoor" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.55, 1.5, 0)
+mesh = SubResource("BoxMesh_door")
+
+[node name="MagneticLock" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.65, 1.5, 0)
+mesh = SubResource("BoxMesh_lock")
+
+[node name="CouplerVisual" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 4.2)
+mesh = SubResource("BoxMesh_coupler")
+
+[node name="DoorHealthComponent" type="Node" parent="."]
+script = ExtResource("2_health")
+max_health = 60.0
+
+[node name="DoorHurtbox" type="Area3D" parent="." node_paths=PackedStringArray("health_component")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.6, 1.5, 0)
+collision_layer = 16
+collision_mask = 8
+script = ExtResource("3_hurtbox")
+health_component = NodePath("../DoorHealthComponent")
+is_breach_target = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="DoorHurtbox"]
+shape = SubResource("BoxShape3D_lock_hurtbox")
+
+[node name="CouplerHealthComponent" type="Node" parent="."]
+script = ExtResource("2_health")
+max_health = 80.0
+
+[node name="CouplerHurtbox" type="Area3D" parent="." node_paths=PackedStringArray("health_component")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 4.2)
+collision_layer = 16
+collision_mask = 8
+script = ExtResource("3_hurtbox")
+health_component = NodePath("../CouplerHealthComponent")
+is_breach_target = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CouplerHurtbox"]
+shape = SubResource("BoxShape3D_coupler_col")
+
+[node name="GrappleAnchorComponent" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, 0)
+script = ExtResource("4_anchor")
+anchor_type = 2
+
+[node name="VaultCrate1" parent="." instance=ExtResource("5_crate")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, -1.5)
+crate_variant = 2
+
+[node name="VaultCrate2" parent="." instance=ExtResource("5_crate")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 1.5)
+crate_variant = 1

@@ -5,8 +5,12 @@ const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 
 signal crate_opened
 signal lock_damaged(current_lock_hp: float)
+signal loot_search_started
+signal loot_search_completed
 
 @export var is_locked: bool = true
+@export var is_searched: bool = false
+@export var search_duration: float = 1.2
 @export var lock_health: float = 60.0
 @export var crate_variant: int = 1
 
@@ -28,6 +32,38 @@ func _ready() -> void:
 	
 	_populate_loot()
 
+## Handles player interaction with first-time loot channel
+func interact_loot(player: Node3D, donut: Node, on_open_inventory: Callable) -> void:
+	if is_searched and not is_locked:
+		# Already unlocked and searched: instant access
+		if on_open_inventory.is_valid():
+			on_open_inventory.call()
+		return
+		
+	if donut and donut.has_method("start_channel"):
+		loot_search_started.emit()
+		donut.start_channel(
+			"Searching Crate...",
+			search_duration,
+			func() -> void:
+				is_searched = true
+				_on_lock_breached()
+				loot_search_completed.emit()
+				if on_open_inventory.is_valid():
+					on_open_inventory.call(),
+			func() -> void:
+				pass, # Cancelled
+			self,
+			player,
+			3.5
+		)
+	else:
+		# Fallback if no donut provided
+		is_searched = true
+		_on_lock_breached()
+		if on_open_inventory.is_valid():
+			on_open_inventory.call()
+
 func _flash_damage() -> void:
 	if lock_mesh:
 		var mat: StandardMaterial3D = lock_mesh.get_active_material(0) as StandardMaterial3D
@@ -42,6 +78,7 @@ func _on_lock_breached() -> void:
 	if not is_locked:
 		return
 	is_locked = false
+	is_searched = true
 	if hurtbox:
 		hurtbox.is_invulnerable = true
 	

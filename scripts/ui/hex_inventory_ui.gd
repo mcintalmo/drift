@@ -240,9 +240,14 @@ func _discover_scene_inventories() -> void:
 	
 	var sled_nodes: Array[Node] = get_tree().get_nodes_in_group(&"player_sled")
 	if not sled_nodes.is_empty() and is_instance_valid(sled_nodes[0]):
-		sled_com_component = sled_nodes[0].get_node_or_null("CenterOfMassComponent") as CenterOfMassComponent
-		if sled_com_component:
-			sled_inventory = sled_com_component.get_node_or_null("CargoPodInventory") as HexInventoryComponent
+		var sled_node: Node3D = sled_nodes[0] as Node3D
+		var is_mounted: bool = (pilot and pilot.is_mounted_in_sled)
+		var is_near_sled: bool = is_mounted or (pilot and pilot.global_position.distance_to(sled_node.global_position) <= 4.0)
+		
+		if is_near_sled:
+			sled_com_component = sled_node.get_node_or_null("CenterOfMassComponent") as CenterOfMassComponent
+			if sled_com_component:
+				sled_inventory = sled_com_component.get_node_or_null("CargoPodInventory") as HexInventoryComponent
 
 func _set_left_container(type: ContainerType) -> void:
 	left_container_type = type

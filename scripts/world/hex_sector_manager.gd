@@ -85,6 +85,13 @@ func _ready() -> void:
 	
 	# 2. Generate initial sector chunks
 	generate_initial_sector()
+	
+	# 3. Spawn Mountain Tunnel Portals & Moving Train Convoy if active heist
+	if is_procedural_railroad_enabled:
+		_spawn_mountain_tunnel_portals()
+		var is_active_rail: bool = biome_data.get("is_railroad_active") if "is_railroad_active" in biome_data else false
+		if is_active_rail:
+			_spawn_moving_train_convoy()
 
 func _resolve_initial_target() -> void:
 	if not active_target:
@@ -142,6 +149,18 @@ func generate_initial_sector(center_coord: Vector2i = Vector2i.ZERO) -> void:
 		_rails_container = Node3D.new()
 		_rails_container.name = "RailsContainer"
 		add_child(_rails_container)
+		
+	if not biome_data:
+		biome_data = load("res://resources/biomes/temperate_permafrost.tres")
+		if not biome_data:
+			biome_data = SectorBiomeDataClass.new()
+		
+	if is_procedural_railroad_enabled and _macro_railroad_path.is_empty():
+		_plan_macro_railroad_corridor(drop_off_coord, extraction_coord)
+		_spawn_mountain_tunnel_portals()
+		var is_active_rail: bool = biome_data.get("is_railroad_active") if "is_railroad_active" in biome_data else false
+		if is_active_rail:
+			_spawn_moving_train_convoy()
 		
 	_current_center_coord = center_coord
 	var center_world: Vector3 = axial_to_world_pos(center_coord)
@@ -728,3 +747,119 @@ func get_active_tile_count() -> int:
 
 func get_railroad_path() -> Array[Vector2i]:
 	return _macro_railroad_path
+
+func get_active_moving_train() -> Node:
+	return _moving_train_instance
+
+## Generates a smooth 3D Curve3D spline matching the multi-chord track geometry
+func get_macro_railroad_curve() -> Curve3D:
+	var curve: Curve3D = Curve3D.new()
+	if _macro_railroad_path.is_empty():
+		return curve
+		
+	var sub_steps: int = 4
+	for idx: int in range(_macro_railroad_path.size() - 1):
+		var cur_c: Vector2i = _macro_railroad_path[idx]
+		var next_c: Vector2i = _macro_railroad_path[idx + 1]
+		var p_start_2d: Vector3 = axial_to_world_pos(cur_c)
+		var p_end_2d: Vector3 = axial_to_world_pos(next_c)
+		
+		for s: int in range(sub_steps):
+			var t: float = float(s) / float(sub_steps)
+			var pt: Vector3 = p_start_2d.lerp(p_end_2d, t)
+			pt.y = sample_terrain_surface_y(pt.x, pt.z) + 0.35 + 0.16 # Positioned directly on rails
+			curve.add_point(pt)
+			
+	# Add final endpoint
+	var last_c: Vector2i = _macro_railroad_path.back()
+	var last_pt: Vector3 = axial_to_world_pos(last_c)
+	last_pt.y = sample_terrain_surface_y(last_pt.x, last_pt.z) + 0.35 + 0.16
+	curve.add_point(last_pt)
+	
+	return curve
+
+var _moving_train_instance: Node = null
+
+func _spawn_moving_train_convoy() -> void:
+	if _macro_railroad_path.is_empty():
+		return
+		
+	var curve: Curve3D = get_macro_railroad_curve()
+	if curve.get_point_count() < 2:
+		return
+		
+	var train_node: MovingTrain = MovingTrain.new()
+	train_node.name = "MovingTrainConvoy"
+	
+	# Load train scenes
+	var loco_scene: PackedScene = load("res://scenes/entities/train/ArmoredLocomotive.tscn")
+	var boxcar_scene: PackedScene = load("res://scenes/entities/train/ArmoredBoxcar.tscn")
+	
+	var cars: Array[TrainCar] = []
+	if loco_scene:
+		var loco: TrainCar = loco_scene.instantiate() as TrainCar
+		loco.name = "ArmoredLocomotive"
+		train_node.add_child(loco)
+		cars.append(loco)
+	if boxcar_scene:
+		var car1: TrainCar = boxcar_scene.instantiate() as TrainCar
+		car1.name = "ArmoredBoxcar_1"
+		train_node.add_child(car1)
+		cars.append(car1)
+		
+		var car2: TrainCar = boxcar_scene.instantiate() as TrainCar
+		car2.name = "ArmoredBoxcar_2"
+		train_node.add_child(car2)
+		cars.append(car2)
+		
+	add_child(train_node)
+	train_node.initialize_train_on_path(curve, cars)
+	_moving_train_instance = train_node
+
+func _spawn_mountain_tunnel_portals() -> void:
+	if _macro_railroad_path.is_empty():
+		return
+		
+	var start_pos: Vector3 = axial_to_world_pos(drop_off_coord)
+	start_pos.y = sample_terrain_surface_y(start_pos.x, start_pos.z)
+	var exit_pos: Vector3 = axial_to_world_pos(extraction_coord)
+	exit_pos.y = sample_terrain_surface_y(exit_pos.x, exit_pos.z)
+	
+	var entrance_portal: StaticBody3D = _create_tunnel_portal_mesh("EntranceCavePortal", start_pos)
+	var exit_portal: StaticBody3D = _create_tunnel_portal_mesh("ExtractionTunnelPortal", exit_pos)
+	
+	if _rails_container:
+		_rails_container.add_child(entrance_portal)
+		_rails_container.add_child(exit_portal)
+	else:
+		add_child(entrance_portal)
+		add_child(exit_portal)
+
+func _create_tunnel_portal_mesh(p_name: String, pos: Vector3) -> StaticBody3D:
+	var portal: StaticBody3D = StaticBody3D.new()
+	portal.name = p_name
+	portal.position = pos
+	portal.collision_layer = 1
+	portal.collision_mask = 7
+	
+	# Heavy Arch Stone Frame
+	var arch_mesh: MeshInstance3D = MeshInstance3D.new()
+	var box: BoxMesh = BoxMesh.new()
+	box.size = Vector3(9.0, 7.5, 5.0)
+	arch_mesh.mesh = box
+	arch_mesh.position.y = 3.5
+	var rock_mat: StandardMaterial3D = StandardMaterial3D.new()
+	rock_mat.albedo_color = Color(0.18, 0.20, 0.22, 1.0)
+	rock_mat.roughness = 0.9
+	arch_mesh.material_override = rock_mat
+	portal.add_child(arch_mesh)
+	
+	# Solid Wall Collider
+	var col: CollisionShape3D = CollisionShape3D.new()
+	var shape: BoxShape3D = BoxShape3D.new()
+	shape.size = Vector3(9.0, 7.5, 5.0)
+	col.shape = shape
+	col.position.y = 3.5
+	portal.add_child(col)
+	
+	return portal

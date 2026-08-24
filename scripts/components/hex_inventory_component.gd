@@ -88,7 +88,7 @@ func remove_item(item: HexItemData) -> bool:
 	inventory_changed.emit(_placed_items)
 	return true
 
-## Applies pseudo-gravity settling: unsupported floating items fall down toward the lowest available slots
+## Applies pseudo-gravity settling: unsupported floating items fall down vertically without lateral bias
 func apply_pseudo_gravity_settling() -> bool:
 	if _placed_items.is_empty():
 		return false
@@ -117,6 +117,7 @@ func apply_pseudo_gravity_settling() -> bool:
 		
 		var current_root: Vector2i = _item_root_coords[item]
 		var rot: int = item.rotation_step
+		var target_x: float = axial_to_cartesian(current_root).x
 		
 		# Temporarily lift item from grid to test downward path
 		remove_item(item)
@@ -124,13 +125,38 @@ func apply_pseudo_gravity_settling() -> bool:
 		var test_root: Vector2i = current_root
 		var lowest_valid_root: Vector2i = current_root
 		
-		# Step downward in vertical +r axis
+		# Downward step vectors in pointy-topped axial grid:
+		# (0, 1) = South-East (+X, +Y), (-1, 1) = South-West (-X, +Y)
+		var step_se: Vector2i = Vector2i(0, 1)
+		var step_sw: Vector2i = Vector2i(-1, 1)
+		
 		while true:
-			var candidate_root: Vector2i = test_root + Vector2i(0, 1)
-			if can_place_item(item, candidate_root, rot):
-				lowest_valid_root = candidate_root
-				test_root = candidate_root
+			var candidate_se: Vector2i = test_root + step_se
+			var candidate_sw: Vector2i = test_root + step_sw
+			
+			var can_se: bool = can_place_item(item, candidate_se, rot)
+			var can_sw: bool = can_place_item(item, candidate_sw, rot)
+			
+			var chosen_candidate: Vector2i = Vector2i(-9999, -9999)
+			
+			if can_se and can_sw:
+				var x_se: float = axial_to_cartesian(candidate_se).x
+				var x_sw: float = axial_to_cartesian(candidate_sw).x
+				# Pick candidate that stays closest to the item's original vertical column
+				if absf(x_se - target_x) <= absf(x_sw - target_x):
+					chosen_candidate = candidate_se
+				else:
+					chosen_candidate = candidate_sw
+			elif can_se:
+				chosen_candidate = candidate_se
+			elif can_sw:
+				chosen_candidate = candidate_sw
+			
+			if chosen_candidate != Vector2i(-9999, -9999):
+				lowest_valid_root = chosen_candidate
+				test_root = chosen_candidate
 			else:
+				# Item has reached a stable supporting surface / floor
 				break
 		
 		place_item(item, lowest_valid_root, rot)

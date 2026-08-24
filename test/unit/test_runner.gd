@@ -3,6 +3,7 @@ extends SceneTree
 const TestInertialDrift = preload("res://test/unit/test_inertial_drift.gd")
 const TestCenterOfMass = preload("res://test/unit/test_center_of_mass.gd")
 const TestHexInventory = preload("res://test/unit/test_hex_inventory.gd")
+const TestPseudoGravity = preload("res://test/unit/test_pseudo_gravity.gd")
 const TestSledWinch = preload("res://test/unit/test_sled_winch.gd")
 const TestPilotLocomotion = preload("res://test/unit/test_pilot_locomotion.gd")
 const TestCombatBreach = preload("res://test/unit/test_combat_breach.gd")
@@ -22,6 +23,7 @@ func _init() -> void:
 		{"name": "Inertial Drift & Multi-Surface Physics", "instance": TestInertialDrift.new()},
 		{"name": "Center of Mass & Tipping Dynamics", "instance": TestCenterOfMass.new()},
 		{"name": "Hexagonal Spatial Inventory", "instance": TestHexInventory.new()},
+		{"name": "Pseudo-Gravity Hex Settling Physics", "instance": TestPseudoGravity.new()},
 		{"name": "Sled Heavy Winch & Spring Mechanics", "instance": TestSledWinch.new()},
 		{"name": "Pilot Locomotion & Jetpack Mobility", "instance": TestPilotLocomotion.new()},
 		{"name": "Combat Damage & Plasma Breaching", "instance": TestCombatBreach.new()},

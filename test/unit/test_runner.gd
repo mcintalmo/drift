@@ -4,6 +4,8 @@ const TestInertialDrift = preload("res://test/unit/test_inertial_drift.gd")
 const TestCenterOfMass = preload("res://test/unit/test_center_of_mass.gd")
 const TestHexInventory = preload("res://test/unit/test_hex_inventory.gd")
 const TestPseudoGravity = preload("res://test/unit/test_pseudo_gravity.gd")
+const TestHexWorldGen = preload("res://test/unit/test_hex_world_gen.gd")
+const TestDynamicWeather = preload("res://test/unit/test_dynamic_weather.gd")
 const TestSledWinch = preload("res://test/unit/test_sled_winch.gd")
 const TestPilotLocomotion = preload("res://test/unit/test_pilot_locomotion.gd")
 const TestCombatBreach = preload("res://test/unit/test_combat_breach.gd")
@@ -24,6 +26,8 @@ func _init() -> void:
 		{"name": "Center of Mass & Tipping Dynamics", "instance": TestCenterOfMass.new()},
 		{"name": "Hexagonal Spatial Inventory", "instance": TestHexInventory.new()},
 		{"name": "Pseudo-Gravity Hex Settling Physics", "instance": TestPseudoGravity.new()},
+		{"name": "Procedural Hex World Generation & Streaming", "instance": TestHexWorldGen.new()},
+		{"name": "Dynamic Blizzard Weather & Thermal Field", "instance": TestDynamicWeather.new()},
 		{"name": "Sled Heavy Winch & Spring Mechanics", "instance": TestSledWinch.new()},
 		{"name": "Pilot Locomotion & Jetpack Mobility", "instance": TestPilotLocomotion.new()},
 		{"name": "Combat Damage & Plasma Breaching", "instance": TestCombatBreach.new()},

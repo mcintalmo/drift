@@ -1,6 +1,8 @@
 class_name ThermalReceiverComponent
 extends Node
 
+const DynamicWeatherManagerClass = preload("res://scripts/world/dynamic_weather_manager.gd")
+
 signal thermal_shield_changed(current_heat: float, max_heat: float)
 signal frostbite_changed(frostbite_amount: float, frostbite_percent: float)
 signal frostbite_critical(is_critical: bool)
@@ -23,6 +25,30 @@ func _ready() -> void:
 	current_thermal_shield = clampf(current_thermal_shield, 0.0, max_thermal_shield)
 
 func update_thermal_state(delta: float, heater_output: float = 0.0) -> void:
+	# Check thermal vent meta
+	if has_meta(&"near_thermal_vent") and get_meta(&"near_thermal_vent") == true:
+		_is_in_warmth_zone = true
+		_external_warmth_rate = 25.0
+	
+	# Sample dynamic weather manager if present in tree
+	if is_inside_tree():
+		var weather_nodes: Array[Node] = get_tree().get_nodes_in_group(&"weather_manager")
+		if not weather_nodes.is_empty():
+			var weather: Node = weather_nodes[0]
+			if weather and is_instance_valid(weather) and weather.has_method("get_temperature_at_position"):
+				var parent_node: Node3D = get_parent() as Node3D
+				var global_pos: Vector3 = parent_node.global_position if parent_node else Vector3.ZERO
+				var local_temp: float = weather.get_temperature_at_position(global_pos)
+				
+				if local_temp > 0.0:
+					_is_in_warmth_zone = true
+					_external_warmth_rate = maxf(_external_warmth_rate, local_temp * 0.8)
+				else:
+					var severe_cold: float = absf(local_temp) / 10.0
+					base_ambient_chill_rate = severe_cold * 1.5
+					var wind_speed: float = weather.get("current_wind_speed_ms") if "current_wind_speed_ms" in weather else 5.0
+					wind_chill_multiplier = 1.0 + (wind_speed / 15.0)
+	
 	var total_warmth_rate: float = heater_output + (_external_warmth_rate if _is_in_warmth_zone else 0.0)
 	var net_environmental_cold: float = base_ambient_chill_rate * wind_chill_multiplier
 	

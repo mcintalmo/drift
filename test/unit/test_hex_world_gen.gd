@@ -76,7 +76,7 @@ func _test_biome_surface_sampling() -> Dictionary:
 func _test_adjacent_hex_vertex_exact_match() -> Dictionary:
 	var biome: SectorBiomeData = SectorBiomeData.new()
 	biome.hex_cell_outer_radius_m = 6.0
-	biome.elevation_amplitude = 3.5
+	biome.elevation_amplitude = 1.2
 	
 	var tile_a: HexWorldTile = HexWorldTile.new()
 	tile_a.initialize_tile(Vector2i(0, 0), biome, 4281, false)
@@ -89,12 +89,12 @@ func _test_adjacent_hex_vertex_exact_match() -> Dictionary:
 	noise.frequency = biome.elevation_frequency
 	var amp: float = biome.elevation_amplitude
 	
-	var fault_noise: FastNoiseLite = FastNoiseLite.new()
-	fault_noise.seed = 4281 + 8881
-	fault_noise.frequency = 0.02
+	var plateau_noise: FastNoiseLite = FastNoiseLite.new()
+	plateau_noise.seed = 4281 + 7771
+	plateau_noise.frequency = 0.008
 	
-	var corners_a: Array[float] = tile_a._compute_continuous_corner_heights(tile_a.position.x, tile_a.position.z, noise, amp, fault_noise)
-	var corners_b: Array[float] = tile_b._compute_continuous_corner_heights(tile_b.position.x, tile_b.position.z, noise, amp, fault_noise)
+	var corners_a: Array[float] = tile_a._compute_continuous_corner_heights(tile_a.position.x, tile_a.position.z, noise, amp, plateau_noise, 0.28, 3.5)
+	var corners_b: Array[float] = tile_b._compute_continuous_corner_heights(tile_b.position.x, tile_b.position.z, noise, amp, plateau_noise, 0.28, 3.5)
 	
 	var world_y_a0: float = tile_a.position.y + corners_a[0]
 	var world_y_b2: float = tile_b.position.y + corners_b[2]

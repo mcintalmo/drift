@@ -115,6 +115,7 @@ func _spawn_tile_at(coord: Vector2i) -> void:
 	_active_tiles[coord] = tile
 	tile_spawned.emit(coord, tile)
 
+## Evaluates hot spring spawning: 0% chance on adjacent hexes, 10% on 1-hex separated spaces (Ring 2)
 func _evaluate_hot_spring_spawn(coord: Vector2i) -> bool:
 	if _hot_spring_registry.has(coord):
 		return _hot_spring_registry[coord]
@@ -122,23 +123,32 @@ func _evaluate_hot_spring_spawn(coord: Vector2i) -> bool:
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = world_seed + (coord.x * 524287) ^ (coord.y * 131071)
 	
-	var base_chance: float = biome_data.get("hot_spring_basin_chance") if "hot_spring_basin_chance" in biome_data else 0.02
-	var cluster_boost: float = biome_data.get("hot_spring_cluster_boost") if "hot_spring_cluster_boost" in biome_data else 0.35
-	
-	# Check if any neighbor is already a hot spring to create rare natural oasis clusters
-	var has_hot_spring_neighbor: bool = false
-	var neighbors: Array[Vector2i] = [
-		Vector2i(coord.x + 1, coord.y), Vector2i(coord.x + 1, coord.y - 1),
-		Vector2i(coord.x, coord.y - 1), Vector2i(coord.x - 1, coord.y),
-		Vector2i(coord.x - 1, coord.y + 1), Vector2i(coord.x, coord.y + 1)
+	# 1. Check immediate adjacent neighbors (Distance 1)
+	var adjacent_offsets: Array[Vector2i] = [
+		Vector2i(1, 0), Vector2i(1, -1), Vector2i(0, -1),
+		Vector2i(-1, 0), Vector2i(-1, 1), Vector2i(0, 1)
 	]
-	
-	for n: Vector2i in neighbors:
-		if _hot_spring_registry.get(n, false) == true:
-			has_hot_spring_neighbor = true
+	for offset: Vector2i in adjacent_offsets:
+		if _hot_spring_registry.get(coord + offset, false) == true:
+			_hot_spring_registry[coord] = false
+			return false # 0% probability on adjacent hexes to prevent overlapping
+			
+	# 2. Check 1-hex separated neighbors (Distance 2)
+	var ring2_offsets: Array[Vector2i] = [
+		Vector2i(2, 0), Vector2i(2, -1), Vector2i(2, -2), Vector2i(1, -2),
+		Vector2i(0, -2), Vector2i(-1, -1), Vector2i(-2, 0), Vector2i(-2, 1),
+		Vector2i(-2, 2), Vector2i(-1, 2), Vector2i(0, 2), Vector2i(1, 1)
+	]
+	var has_distance2_spring: bool = false
+	for offset: Vector2i in ring2_offsets:
+		if _hot_spring_registry.get(coord + offset, false) == true:
+			has_distance2_spring = true
 			break
+			
+	var base_chance: float = biome_data.get("hot_spring_basin_chance") if "hot_spring_basin_chance" in biome_data else 0.01
+	var cluster_boost: float = biome_data.get("hot_spring_cluster_boost") if "hot_spring_cluster_boost" in biome_data else 0.10
 	
-	var effective_chance: float = cluster_boost if has_hot_spring_neighbor else base_chance
+	var effective_chance: float = cluster_boost if has_distance2_spring else base_chance
 	var result: bool = rng.randf() < effective_chance
 	_hot_spring_registry[coord] = result
 	return result
@@ -206,7 +216,6 @@ func _generate_connected_railroad_corridor() -> void:
 	var end_coord: Vector2i = Vector2i(render_radius_rings, 0)
 	
 	if not coord_to_id.has(start_coord) or not coord_to_id.has(end_coord):
-		# Fallback to any two far nodes
 		var all_coords: Array = _active_tiles.keys()
 		start_coord = all_coords[0]
 		end_coord = all_coords[all_coords.size() - 1]

@@ -22,7 +22,7 @@ func _ready() -> void:
 	if not _static_body:
 		_build_tile_geometry([])
 
-## Initializes the hex tile with continuous world-space vertex height sampling and Model C geometry
+## Initializes the hex tile with smooth rolling elevation, separated macro plateau cliffs, and Model C geometry
 func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring_flag: bool = false) -> void:
 	axial_coord = coord
 	biome_data = biome if biome else SectorBiomeDataClass.new()
@@ -33,44 +33,43 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 	var world_x: float = tile_outer_radius_m * SQRT_3 * (float(coord.x) + float(coord.y) * 0.5)
 	var world_z: float = tile_outer_radius_m * 1.5 * float(coord.y)
 	
-	var noise: FastNoiseLite = FastNoiseLite.new()
-	noise.seed = seed_val
-	var freq: float = biome_data.get("elevation_frequency") if "elevation_frequency" in biome_data else 0.035
-	var amp: float = biome_data.get("elevation_amplitude") if "elevation_amplitude" in biome_data else 2.4
-	noise.frequency = freq
+	# 1. Gentle, smooth rolling base elevation noise
+	var base_noise: FastNoiseLite = FastNoiseLite.new()
+	base_noise.seed = seed_val
+	var freq: float = biome_data.get("elevation_frequency") if "elevation_frequency" in biome_data else 0.012
+	var amp: float = biome_data.get("elevation_amplitude") if "elevation_amplitude" in biome_data else 1.2
+	base_noise.frequency = freq
+	base_elevation_m = base_noise.get_noise_2d(world_x, world_z) * amp
 	
-	# Primary elevation noise
-	base_elevation_m = noise.get_noise_2d(world_x, world_z) * amp
-	
-	# Fault line / Cliff Plateau modifier
-	var fault_noise: FastNoiseLite = FastNoiseLite.new()
-	fault_noise.seed = seed_val + 8881
-	fault_noise.frequency = 0.02
-	var fault_val: float = fault_noise.get_noise_2d(world_x, world_z)
-	if fault_val > 0.32:
-		base_elevation_m += 3.2 # Dramatic stepped plateau cliff
-	elif fault_val < -0.38:
-		base_elevation_m -= 2.6 # Glacial chasm depression
-	
+	# 2. Separated Macro Plateau Cliff tiering
+	var plateau_noise: FastNoiseLite = FastNoiseLite.new()
+	plateau_noise.seed = seed_val + 7771
+	plateau_noise.frequency = 0.008
+	var p_val: float = plateau_noise.get_noise_2d(world_x, world_z)
+	var p_thresh: float = biome_data.get("plateau_threshold") if "plateau_threshold" in biome_data else 0.28
+	var tier_h: float = biome_data.get("plateau_tier_height_m") if "plateau_tier_height_m" in biome_data else 3.5
+	if p_val > p_thresh:
+		base_elevation_m += tier_h # Macro cliff plateau step
+		
 	position = Vector3(world_x, base_elevation_m, world_z)
 	
 	if is_hot_spring:
 		surface_type = &"slush"
 	else:
-		var surface_roll: float = absf(noise.get_noise_2d(world_x + 500.0, world_z + 500.0))
+		var surface_roll: float = absf(base_noise.get_noise_2d(world_x + 500.0, world_z + 500.0))
 		if biome_data.has_method("sample_surface_type"):
 			surface_type = biome_data.sample_surface_type(surface_roll)
 		else:
 			surface_type = &"pack"
 	
 	# Compute exact continuous corner vertex heights in world space
-	_cached_corner_heights = _compute_continuous_corner_heights(world_x, world_z, noise, amp, fault_noise)
+	_cached_corner_heights = _compute_continuous_corner_heights(world_x, world_z, base_noise, amp, plateau_noise, p_thresh, tier_h)
 	
 	_build_tile_geometry(_cached_corner_heights)
 	_spawn_procedural_features(seed_val)
 
 ## Evaluates continuous world-space noise height at the 6 exact corner vertex coordinates
-func _compute_continuous_corner_heights(center_x: float, center_z: float, noise: FastNoiseLite, amp: float, fault_noise: FastNoiseLite) -> Array[float]:
+func _compute_continuous_corner_heights(center_x: float, center_z: float, base_noise: FastNoiseLite, amp: float, plateau_noise: FastNoiseLite, p_thresh: float, tier_h: float) -> Array[float]:
 	var corner_heights: Array[float] = []
 	
 	for i: int in range(6):
@@ -78,15 +77,13 @@ func _compute_continuous_corner_heights(center_x: float, center_z: float, noise:
 		var corner_world_x: float = center_x + (tile_outer_radius_m * cos(angle_rad))
 		var corner_world_z: float = center_z + (tile_outer_radius_m * sin(angle_rad))
 		
-		# Sample continuous base noise
-		var corner_world_elevation: float = noise.get_noise_2d(corner_world_x, corner_world_z) * amp
+		# Sample continuous base elevation
+		var corner_world_elevation: float = base_noise.get_noise_2d(corner_world_x, corner_world_z) * amp
 		
-		# Apply fault line cliff shift if present
-		var f_val: float = fault_noise.get_noise_2d(corner_world_x, corner_world_z)
-		if f_val > 0.32:
-			corner_world_elevation += 3.2
-		elif f_val < -0.38:
-			corner_world_elevation -= 2.6
+		# Sample plateau tier at this exact corner coordinate
+		var p_val: float = plateau_noise.get_noise_2d(corner_world_x, corner_world_z)
+		if p_val > p_thresh:
+			corner_world_elevation += tier_h
 			
 		# Relative Y height offset in this tile's local coordinate space
 		var local_y: float = corner_world_elevation - base_elevation_m
@@ -105,7 +102,7 @@ func _build_tile_geometry(corner_heights: Array[float]) -> void:
 	_static_body.set_meta(&"surface_type", surface_type)
 	add_child(_static_body)
 	
-	var hex_mesh: ArrayMesh = _generate_model_c_mesh(tile_outer_radius_m, 3.5, corner_heights)
+	var hex_mesh: ArrayMesh = _generate_model_c_mesh(tile_outer_radius_m, 4.0, corner_heights)
 	
 	_mesh_instance = MeshInstance3D.new()
 	_mesh_instance.name = "TileMesh"
@@ -134,8 +131,8 @@ func _generate_model_c_mesh(radius: float, depth: float, corner_heights: Array[f
 		top_vertices.append(Vector3(vx, vy, vz))
 		bottom_vertices.append(Vector3(vx, -depth, vz))
 	
-	# Center Vertex: sunken basin if hot spring (-1.6m), level if normal terrain
-	var center_y: float = -1.6 if is_hot_spring else 0.0
+	# Center Vertex: gentle shallow basin if hot spring (-0.9m), level if normal terrain
+	var center_y: float = -0.9 if is_hot_spring else 0.0
 	var top_center: Vector3 = Vector3(0.0, center_y, 0.0)
 	var bottom_center: Vector3 = Vector3(0.0, -depth, 0.0)
 	
@@ -231,11 +228,11 @@ func _spawn_procedural_features(seed_val: int) -> void:
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = seed_val + (axial_coord.x * 73856093) ^ (axial_coord.y * 19349663)
 	
-	var wreck_chance: float = biome_data.get("overturned_sled_wreck_chance") if "overturned_sled_wreck_chance" in biome_data else 0.04
+	var wreck_chance: float = biome_data.get("overturned_sled_wreck_chance") if "overturned_sled_wreck_chance" in biome_data else 0.03
 	var corpo_chance: float = biome_data.get("abandoned_corpo_facility_chance") if "abandoned_corpo_facility_chance" in biome_data else 0.02
-	var boulder_chance: float = biome_data.get("boulder_density") if "boulder_density" in biome_data else 0.12
-	var pine_chance: float = biome_data.get("pine_tree_density") if "pine_tree_density" in biome_data else 0.18
-	var crate_chance: float = biome_data.get("ground_crate_cache_chance") if "ground_crate_cache_chance" in biome_data else 0.10
+	var boulder_chance: float = biome_data.get("boulder_density") if "boulder_density" in biome_data else 0.08
+	var pine_chance: float = biome_data.get("pine_tree_density") if "pine_tree_density" in biome_data else 0.14
+	var crate_chance: float = biome_data.get("ground_crate_cache_chance") if "ground_crate_cache_chance" in biome_data else 0.08
 	
 	# 1. Overturned Sled Wreck
 	if rng.randf() < wreck_chance:
@@ -263,28 +260,28 @@ func _setup_hot_spring_basin() -> void:
 	var basin_node: Node3D = Node3D.new()
 	basin_node.name = "HotSpringBasin"
 	
-	# Calculate minimum rim vertex height so water is guaranteed 100% occluded by ground rim
+	# Calculate minimum rim vertex height so water is guaranteed 100% occluded by rim
 	var min_rim_y: float = 0.0
 	if not _cached_corner_heights.is_empty():
 		min_rim_y = _cached_corner_heights[0]
 		for h: float in _cached_corner_heights:
 			min_rim_y = minf(min_rim_y, h)
 	
-	var water_y: float = min_rim_y - 0.45 # Strictly below lowest rim vertex
+	var water_y: float = min_rim_y - 0.22 # Shallow, beautiful, and clearly visible
 	
-	# Steaming Turquoise Water Surface Plane (Inner Concentric Hexagon)
+	# Steaming Turquoise Water Surface Plane (Concentric Hexagon Pool)
 	var water_mesh: MeshInstance3D = MeshInstance3D.new()
 	var cyl: CylinderMesh = CylinderMesh.new()
-	cyl.top_radius = tile_outer_radius_m * 0.62
-	cyl.bottom_radius = tile_outer_radius_m * 0.62
-	cyl.height = 0.1
+	cyl.top_radius = tile_outer_radius_m * 0.70
+	cyl.bottom_radius = tile_outer_radius_m * 0.70
+	cyl.height = 0.08
 	water_mesh.mesh = cyl
 	water_mesh.position.y = water_y
 	
 	var water_mat: StandardMaterial3D = StandardMaterial3D.new()
-	water_mat.albedo_color = Color(0.12, 0.82, 0.78, 0.88) # Vivid turquoise
-	water_mat.roughness = 0.1
-	water_mat.metallic = 0.2
+	water_mat.albedo_color = Color(0.10, 0.85, 0.80, 0.90) # Vivid glowing turquoise
+	water_mat.roughness = 0.08
+	water_mat.metallic = 0.15
 	water_mesh.material_override = water_mat
 	basin_node.add_child(water_mesh)
 	
@@ -292,7 +289,7 @@ func _setup_hot_spring_basin() -> void:
 	var light: OmniLight3D = OmniLight3D.new()
 	light.light_color = Color(1.0, 0.45, 0.05, 1.0) # Fiery heat amber-orange
 	light.light_energy = 4.5
-	light.omni_range = tile_outer_radius_m * 2.0
+	light.omni_range = tile_outer_radius_m * 2.2
 	light.position.y = water_y + 0.8
 	basin_node.add_child(light)
 	
@@ -309,7 +306,7 @@ func _setup_hot_spring_basin() -> void:
 	p_mesh.material = steam_mat
 	steam.mesh = p_mesh
 	steam.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	steam.emission_sphere_radius = tile_outer_radius_m * 0.45
+	steam.emission_sphere_radius = tile_outer_radius_m * 0.50
 	steam.direction = Vector3(0, 1, 0)
 	steam.spread = 22.0
 	steam.gravity = Vector3(0, 1.4, 0)
@@ -317,7 +314,7 @@ func _setup_hot_spring_basin() -> void:
 	steam.initial_velocity_max = 3.8
 	steam.scale_amount_min = 0.7
 	steam.scale_amount_max = 2.4
-	steam.position.y = water_y + 0.1
+	steam.position.y = water_y + 0.05
 	basin_node.add_child(steam)
 	
 	add_child(basin_node)
@@ -431,7 +428,7 @@ func _spawn_petrified_pine(rng: RandomNumberGenerator) -> void:
 	cyl.bottom_radius = 0.40
 	cyl.height = 4.8
 	trunk.mesh = cyl
-	trunk.position.y = 1.6 # Top at +4.0m, bottom at -0.8m deep into ground
+	trunk.position.y = 1.6
 	tree.add_child(trunk)
 	
 	# Snow collar base around tree root

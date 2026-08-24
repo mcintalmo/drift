@@ -21,8 +21,12 @@ signal railroad_generated(path_length: int)
 @export_group("Isometric Frustum Streaming Extents")
 @export var forward_render_depth_m: float = 58.0 # Deep render distance to the North (screen up)
 @export var lateral_render_width_m: float = 34.0 # Lateral width (East / West)
-@export var rear_render_depth_m: float = 16.0 # Shallow cutoff to the South (behind camera)
+@export var rear_render_depth_m: float = 22.0 # Render depth to the South (screen down)
 @export var velocity_lead_seconds: float = 0.70 # Predictive forward tile spawning at speed
+
+@export_group("Hysteresis & Despawn Buffers")
+@export var despawn_buffer_margin_m: float = 25.0 # Extra safety padding before despawning tiles
+@export var sled_proximity_immunity_radius_m: float = 38.0 # Sled safety bubble: tiles inside are immune to despawn
 
 # Active Tile Registry: Vector2i(q, r) -> Node3D
 var _active_tiles: Dictionary = {}
@@ -101,7 +105,7 @@ func _physics_process(_delta: float) -> void:
 	
 	var target_pos: Vector3 = effective_target.global_position if effective_target.is_inside_tree() else effective_target.position
 	
-	# Add velocity predictive lead
+	# Add velocity predictive lead for spawning ahead
 	var vel_offset: Vector3 = Vector3.ZERO
 	if effective_target is CharacterBody3D:
 		var v: Vector3 = (effective_target as CharacterBody3D).velocity
@@ -113,7 +117,7 @@ func _physics_process(_delta: float) -> void:
 	
 	if target_coord != _current_center_coord:
 		_current_center_coord = target_coord
-		_update_asymmetric_streaming_rings(predictive_pos, target_coord)
+		_update_asymmetric_streaming_rings(target_pos, predictive_pos, target_coord)
 
 ## Generates concentric hex tiles around center and builds connected railway corridor
 func generate_initial_sector(center_coord: Vector2i = Vector2i.ZERO) -> void:
@@ -128,37 +132,54 @@ func generate_initial_sector(center_coord: Vector2i = Vector2i.ZERO) -> void:
 		
 	_current_center_coord = center_coord
 	var center_world: Vector3 = axial_to_world_pos(center_coord)
-	_update_asymmetric_streaming_rings(center_world, center_coord)
+	_update_asymmetric_streaming_rings(center_world, center_world, center_coord)
 	
 	if is_procedural_railroad_enabled:
 		_generate_connected_railroad_corridor()
 		
 	sector_generated.emit(_active_tiles.size())
 
-func _update_asymmetric_streaming_rings(center_world: Vector3, center_coord: Vector2i) -> void:
-	var needed_coords: Array[Vector2i] = get_asymmetric_isometric_cluster(center_world, center_coord)
+## Spawns tiles using predictive forward position and despawns only outside the wide real-position hysteresis envelope
+func _update_asymmetric_streaming_rings(real_target_pos: Vector3, predictive_pos: Vector3, center_coord: Vector2i) -> void:
+	# 1. Spawn envelope: Uses predictive_pos to spawn tiles ahead
+	var needed_coords: Array[Vector2i] = get_asymmetric_isometric_cluster(predictive_pos, center_coord, forward_render_depth_m, lateral_render_width_m, rear_render_depth_m)
 	
 	# Pre-evaluate chasm map
 	_pre_evaluate_chasm_map(needed_coords)
 	
-	# 1. Spawn missing tiles
 	for coord: Vector2i in needed_coords:
 		if not _active_tiles.has(coord):
 			_spawn_tile_at(coord)
 	
-	# 2. Despawn distant tiles
+	# 2. Despawn envelope with wide hysteresis buffer anchored to real_target_pos (NEVER predictive)
+	var max_fwd_despawn: float = forward_render_depth_m + despawn_buffer_margin_m
+	var max_lat_despawn: float = lateral_render_width_m + despawn_buffer_margin_m
+	var max_rear_despawn: float = rear_render_depth_m + despawn_buffer_margin_m
+	
 	var to_remove: Array[Vector2i] = []
 	for coord: Vector2i in _active_tiles:
-		if not needed_coords.has(coord):
+		var tile_world: Vector3 = axial_to_world_pos(coord)
+		var rel_vec: Vector3 = tile_world - real_target_pos
+		
+		# Proximity Immunity Bubble: Never despawn tiles near the vehicle to protect physics
+		var direct_dist: float = rel_vec.length()
+		if direct_dist <= sled_proximity_immunity_radius_m:
+			continue
+			
+		var d_forward: float = rel_vec.dot(VIEW_FORWARD)
+		var d_lateral: float = absf(rel_vec.dot(VIEW_RIGHT))
+		
+		var outside_despawn_envelope: bool = (d_forward < -max_rear_despawn) or (d_forward > max_fwd_despawn) or (d_lateral > max_lat_despawn)
+		if outside_despawn_envelope:
 			to_remove.append(coord)
 	
 	for coord: Vector2i in to_remove:
 		_despawn_tile_at(coord)
 
 ## Computes asymmetric isometric hex cluster with extended render depth to the North
-func get_asymmetric_isometric_cluster(center_world: Vector3, center_coord: Vector2i) -> Array[Vector2i]:
+func get_asymmetric_isometric_cluster(center_world: Vector3, center_coord: Vector2i, fwd_depth: float = 58.0, lat_width: float = 34.0, rear_depth: float = 22.0) -> Array[Vector2i]:
 	var results: Array[Vector2i] = []
-	var scan_radius: int = 8 # Scan window
+	var scan_radius: int = 9 # Extended scan window
 	
 	for q: int in range(-scan_radius, scan_radius + 1):
 		for r: int in range(-scan_radius, scan_radius + 1):
@@ -171,9 +192,9 @@ func get_asymmetric_isometric_cluster(center_world: Vector3, center_coord: Vecto
 			var d_lateral: float = absf(rel_vec.dot(VIEW_RIGHT)) # Lateral width
 			var direct_dist: float = rel_vec.length()
 			
-			# Asymmetric frustum test: deep North (58m), wide lateral (34m), shallow South (16m), or close proximity (18m)
-			var in_frustum: bool = (d_forward >= -rear_render_depth_m) and (d_forward <= forward_render_depth_m) and (d_lateral <= lateral_render_width_m)
-			var in_proximity: bool = direct_dist <= 18.0
+			# Asymmetric frustum test
+			var in_frustum: bool = (d_forward >= -rear_depth) and (d_forward <= fwd_depth) and (d_lateral <= lat_width)
+			var in_proximity: bool = direct_dist <= 22.0
 			
 			if in_frustum or in_proximity:
 				results.append(cand_coord)

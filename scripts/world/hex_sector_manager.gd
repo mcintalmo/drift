@@ -3,6 +3,7 @@ extends Node3D
 
 const HexWorldTileClass = preload("res://scripts/world/hex_world_tile.gd")
 const SectorBiomeDataClass = preload("res://scripts/resources/sector_biome_data.gd")
+const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 
 signal tile_spawned(coord: Vector2i, tile: Node3D)
 signal tile_despawned(coord: Vector2i)
@@ -43,22 +44,54 @@ func _ready() -> void:
 		if not biome_data:
 			biome_data = SectorBiomeDataClass.new()
 	
-	if not active_target:
-		var pilots: Array[Node] = get_tree().get_nodes_in_group(&"player_pilot")
-		if not pilots.is_empty():
-			active_target = pilots[0] as Node3D
-		else:
-			var sleds: Array[Node] = get_tree().get_nodes_in_group(&"player_sled")
-			if not sleds.is_empty():
-				active_target = sleds[0] as Node3D
+	_resolve_initial_target()
+	
+	# Listen for mount / dismount events to seamlessly update streaming focus
+	if GlobalEvents.instance:
+		GlobalEvents.instance.pilot_mounted_sled.connect(func(sled: Node) -> void:
+			if sled is Node3D:
+				active_target = sled as Node3D
+		)
+		GlobalEvents.instance.pilot_dismounted_sled.connect(func(_sled: Node) -> void:
+			var pilots: Array[Node] = get_tree().get_nodes_in_group(&"player_pilot")
+			if not pilots.is_empty() and pilots[0] is Node3D:
+				active_target = pilots[0] as Node3D
+		)
 	
 	generate_initial_sector()
 
+func _resolve_initial_target() -> void:
+	if not active_target:
+		var sleds: Array[Node] = get_tree().get_nodes_in_group(&"player_sled")
+		for s in sleds:
+			if s is Node3D and s.get("is_occupied") == true:
+				active_target = s as Node3D
+				return
+		var pilots: Array[Node] = get_tree().get_nodes_in_group(&"player_pilot")
+		if not pilots.is_empty():
+			active_target = pilots[0] as Node3D
+		elif not sleds.is_empty():
+			active_target = sleds[0] as Node3D
+
 func _physics_process(_delta: float) -> void:
-	if not is_dynamic_streaming_enabled or not active_target or not is_instance_valid(active_target):
+	if not is_dynamic_streaming_enabled:
 		return
 	
-	var target_pos: Vector3 = active_target.global_position if active_target.is_inside_tree() else active_target.position
+	# Dynamically resolve effective target (following sled when pilot is mounted)
+	var effective_target: Node3D = active_target
+	if not effective_target or not is_instance_valid(effective_target):
+		_resolve_initial_target()
+		effective_target = active_target
+		
+	if not effective_target or not is_instance_valid(effective_target):
+		return
+		
+	if "is_mounted_in_sled" in effective_target and effective_target.get("is_mounted_in_sled") == true:
+		var current_sled: Node3D = effective_target.get("current_sled") as Node3D
+		if current_sled and is_instance_valid(current_sled):
+			effective_target = current_sled
+	
+	var target_pos: Vector3 = effective_target.global_position if effective_target.is_inside_tree() else effective_target.position
 	var target_coord: Vector2i = world_pos_to_axial_coord(target_pos)
 	
 	if target_coord != _current_center_coord:

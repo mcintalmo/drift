@@ -4,6 +4,7 @@ extends RefCounted
 const HexSectorManager = preload("res://scripts/world/hex_sector_manager.gd")
 const HexWorldTile = preload("res://scripts/world/hex_world_tile.gd")
 const SectorBiomeData = preload("res://scripts/resources/sector_biome_data.gd")
+const Pilot = preload("res://scripts/entities/pilot/pilot.gd")
 
 func run_tests() -> Array[Dictionary]:
 	var results: Array[Dictionary] = []
@@ -15,6 +16,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_chasm_jump_ramp_generation())
 	results.append(_test_procedural_connected_railroad())
 	results.append(_test_sector_manager_streaming_and_pooling())
+	results.append(_test_mounted_sled_streaming_target())
 	return results
 
 func _test_axial_to_world_position_conversion() -> Dictionary:
@@ -161,7 +163,6 @@ func _test_chasm_jump_ramp_generation() -> Dictionary:
 	
 	var corners: Array[float] = tile._compute_continuous_corner_heights(tile.position.x, tile.position.z, noise, biome.elevation_amplitude, hill_noise, 3.8)
 	
-	# East corner (index 0 at +30 deg) should have positive kicker elevation compared to approach
 	var east_kicker: float = corners[0]
 	var west_approach: float = corners[3]
 	
@@ -219,4 +220,35 @@ func _test_sector_manager_streaming_and_pooling() -> Dictionary:
 		"message": "Chunk streaming: initial=%d, shifted=%d, old chunk pooled=%s" % [
 			initial_count, shifted_count, str(old_center_cleared)
 		]
+	}
+
+func _test_mounted_sled_streaming_target() -> Dictionary:
+	var mgr: HexSectorManager = HexSectorManager.new()
+	mgr.biome_data = SectorBiomeData.new()
+	mgr.render_radius_rings = 1 # 7 tiles
+	mgr.is_dynamic_streaming_enabled = true
+	
+	var pilot: Pilot = Pilot.new()
+	var sled: CharacterBody3D = CharacterBody3D.new()
+	sled.position = Vector3(50, 0, 50)
+	
+	pilot.is_mounted_in_sled = true
+	pilot.current_sled = sled
+	mgr.active_target = pilot
+	
+	# Simulate physics process tick
+	mgr._physics_process(0.016)
+	
+	var sled_coord: Vector2i = mgr.world_pos_to_axial_coord(sled.position)
+	var streamed_tile_at_sled: bool = (mgr.get_active_tile(sled_coord) != null)
+	
+	var passed: bool = streamed_tile_at_sled
+	
+	pilot.free()
+	sled.free()
+	mgr.free()
+	return {
+		"name": "test_mounted_sled_streaming_target",
+		"passed": passed,
+		"message": "Mounted pilot automatically redirected streaming target to moving sled at %s (tile exists: %s)" % [str(sled_coord), str(streamed_tile_at_sled)]
 	}

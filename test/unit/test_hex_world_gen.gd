@@ -12,6 +12,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_biome_surface_sampling())
 	results.append(_test_adjacent_hex_vertex_exact_match())
 	results.append(_test_hot_spring_basin_creation())
+	results.append(_test_procedural_connected_railroad())
 	results.append(_test_sector_manager_streaming_and_pooling())
 	return results
 
@@ -83,16 +84,17 @@ func _test_adjacent_hex_vertex_exact_match() -> Dictionary:
 	var tile_b: HexWorldTile = HexWorldTile.new()
 	tile_b.initialize_tile(Vector2i(1, 0), biome, 4281, false)
 	
-	# In Pointy-topped grid:
-	# Tile A (0, 0) Corner 0 (30 deg) world position matches Tile B (1, 0) Corner 2 (150 deg) world position!
-	# Tile A (0, 0) Corner 5 (330 deg) world position matches Tile B (1, 0) Corner 3 (210 deg) world position!
 	var noise: FastNoiseLite = FastNoiseLite.new()
 	noise.seed = 4281
 	noise.frequency = biome.elevation_frequency
 	var amp: float = biome.elevation_amplitude
 	
-	var corners_a: Array[float] = tile_a._compute_continuous_corner_heights(tile_a.position.x, tile_a.position.z, noise, amp)
-	var corners_b: Array[float] = tile_b._compute_continuous_corner_heights(tile_b.position.x, tile_b.position.z, noise, amp)
+	var fault_noise: FastNoiseLite = FastNoiseLite.new()
+	fault_noise.seed = 4281 + 8881
+	fault_noise.frequency = 0.02
+	
+	var corners_a: Array[float] = tile_a._compute_continuous_corner_heights(tile_a.position.x, tile_a.position.z, noise, amp, fault_noise)
+	var corners_b: Array[float] = tile_b._compute_continuous_corner_heights(tile_b.position.x, tile_b.position.z, noise, amp, fault_noise)
 	
 	var world_y_a0: float = tile_a.position.y + corners_a[0]
 	var world_y_b2: float = tile_b.position.y + corners_b[2]
@@ -136,6 +138,25 @@ func _test_hot_spring_basin_creation() -> Dictionary:
 		"message": "Hot spring basin: is_hot_spring=%s, in_group=%s, warmth inside=%.1f C, far=%.1f C" % [
 			str(is_hot_spring_flag), str(is_in_vent_group), warmth_inside, warmth_far
 		]
+	}
+
+func _test_procedural_connected_railroad() -> Dictionary:
+	var mgr: HexSectorManager = HexSectorManager.new()
+	mgr.biome_data = SectorBiomeData.new()
+	mgr.render_radius_rings = 2 # 19 tiles
+	mgr.is_procedural_railroad_enabled = true
+	mgr.is_dynamic_streaming_enabled = false
+	
+	mgr.generate_initial_sector(Vector2i.ZERO)
+	var rail_path: Array[Vector2i] = mgr.get_railroad_path()
+	
+	var passed: bool = rail_path.size() >= 3
+	
+	mgr.free()
+	return {
+		"name": "test_procedural_connected_railroad",
+		"passed": passed,
+		"message": "Procedural connected railroad corridor generated with %d consecutive hex nodes" % rail_path.size()
 	}
 
 func _test_sector_manager_streaming_and_pooling() -> Dictionary:

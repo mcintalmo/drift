@@ -14,6 +14,7 @@ const SectorBiomeDataClass = preload("res://scripts/resources/sector_biome_data.
 var _static_body: StaticBody3D
 var _mesh_instance: MeshInstance3D
 var _spawned_props: Array[Node3D] = []
+var _cached_corner_heights: Array[float] = []
 
 const SQRT_3: float = 1.7320508
 
@@ -21,7 +22,7 @@ func _ready() -> void:
 	if not _static_body:
 		_build_tile_geometry([])
 
-## Initializes the hex tile with continuous world-space vertex height sampling
+## Initializes the hex tile with continuous world-space vertex height sampling and Model C geometry
 func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring_flag: bool = false) -> void:
 	axial_coord = coord
 	biome_data = biome if biome else SectorBiomeDataClass.new()
@@ -35,10 +36,22 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 	var noise: FastNoiseLite = FastNoiseLite.new()
 	noise.seed = seed_val
 	var freq: float = biome_data.get("elevation_frequency") if "elevation_frequency" in biome_data else 0.035
-	var amp: float = biome_data.get("elevation_amplitude") if "elevation_amplitude" in biome_data else 2.8
+	var amp: float = biome_data.get("elevation_amplitude") if "elevation_amplitude" in biome_data else 2.4
 	noise.frequency = freq
 	
+	# Primary elevation noise
 	base_elevation_m = noise.get_noise_2d(world_x, world_z) * amp
+	
+	# Fault line / Cliff Plateau modifier
+	var fault_noise: FastNoiseLite = FastNoiseLite.new()
+	fault_noise.seed = seed_val + 8881
+	fault_noise.frequency = 0.02
+	var fault_val: float = fault_noise.get_noise_2d(world_x, world_z)
+	if fault_val > 0.32:
+		base_elevation_m += 3.2 # Dramatic stepped plateau cliff
+	elif fault_val < -0.38:
+		base_elevation_m -= 2.6 # Glacial chasm depression
+	
 	position = Vector3(world_x, base_elevation_m, world_z)
 	
 	if is_hot_spring:
@@ -51,13 +64,13 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 			surface_type = &"pack"
 	
 	# Compute exact continuous corner vertex heights in world space
-	var corner_heights: Array[float] = _compute_continuous_corner_heights(world_x, world_z, noise, amp)
+	_cached_corner_heights = _compute_continuous_corner_heights(world_x, world_z, noise, amp, fault_noise)
 	
-	_build_tile_geometry(corner_heights)
+	_build_tile_geometry(_cached_corner_heights)
 	_spawn_procedural_features(seed_val)
 
 ## Evaluates continuous world-space noise height at the 6 exact corner vertex coordinates
-func _compute_continuous_corner_heights(center_x: float, center_z: float, noise: FastNoiseLite, amp: float) -> Array[float]:
+func _compute_continuous_corner_heights(center_x: float, center_z: float, noise: FastNoiseLite, amp: float, fault_noise: FastNoiseLite) -> Array[float]:
 	var corner_heights: Array[float] = []
 	
 	for i: int in range(6):
@@ -65,9 +78,16 @@ func _compute_continuous_corner_heights(center_x: float, center_z: float, noise:
 		var corner_world_x: float = center_x + (tile_outer_radius_m * cos(angle_rad))
 		var corner_world_z: float = center_z + (tile_outer_radius_m * sin(angle_rad))
 		
-		# Sample continuous noise at this exact world-space corner position
+		# Sample continuous base noise
 		var corner_world_elevation: float = noise.get_noise_2d(corner_world_x, corner_world_z) * amp
 		
+		# Apply fault line cliff shift if present
+		var f_val: float = fault_noise.get_noise_2d(corner_world_x, corner_world_z)
+		if f_val > 0.32:
+			corner_world_elevation += 3.2
+		elif f_val < -0.38:
+			corner_world_elevation -= 2.6
+			
 		# Relative Y height offset in this tile's local coordinate space
 		var local_y: float = corner_world_elevation - base_elevation_m
 		corner_heights.append(local_y)
@@ -85,7 +105,7 @@ func _build_tile_geometry(corner_heights: Array[float]) -> void:
 	_static_body.set_meta(&"surface_type", surface_type)
 	add_child(_static_body)
 	
-	var hex_mesh: ArrayMesh = _generate_model_c_mesh(tile_outer_radius_m, 2.5, corner_heights)
+	var hex_mesh: ArrayMesh = _generate_model_c_mesh(tile_outer_radius_m, 3.5, corner_heights)
 	
 	_mesh_instance = MeshInstance3D.new()
 	_mesh_instance.name = "TileMesh"
@@ -114,8 +134,8 @@ func _generate_model_c_mesh(radius: float, depth: float, corner_heights: Array[f
 		top_vertices.append(Vector3(vx, vy, vz))
 		bottom_vertices.append(Vector3(vx, -depth, vz))
 	
-	# Center Vertex: sunken if hot spring basin, level if normal terrain
-	var center_y: float = -1.4 if is_hot_spring else 0.0
+	# Center Vertex: sunken basin if hot spring (-1.6m), level if normal terrain
+	var center_y: float = -1.6 if is_hot_spring else 0.0
 	var top_center: Vector3 = Vector3(0.0, center_y, 0.0)
 	var bottom_center: Vector3 = Vector3(0.0, -depth, 0.0)
 	
@@ -211,12 +231,11 @@ func _spawn_procedural_features(seed_val: int) -> void:
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = seed_val + (axial_coord.x * 73856093) ^ (axial_coord.y * 19349663)
 	
-	var wreck_chance: float = biome_data.get("overturned_sled_wreck_chance") if "overturned_sled_wreck_chance" in biome_data else 0.05
-	var corpo_chance: float = biome_data.get("abandoned_corpo_facility_chance") if "abandoned_corpo_facility_chance" in biome_data else 0.03
-	var rail_chance: float = biome_data.get("railroad_corridor_chance") if "railroad_corridor_chance" in biome_data else 0.08
-	var boulder_chance: float = biome_data.get("boulder_density") if "boulder_density" in biome_data else 0.15
-	var pine_chance: float = biome_data.get("pine_tree_density") if "pine_tree_density" in biome_data else 0.20
-	var crate_chance: float = biome_data.get("ground_crate_cache_chance") if "ground_crate_cache_chance" in biome_data else 0.12
+	var wreck_chance: float = biome_data.get("overturned_sled_wreck_chance") if "overturned_sled_wreck_chance" in biome_data else 0.04
+	var corpo_chance: float = biome_data.get("abandoned_corpo_facility_chance") if "abandoned_corpo_facility_chance" in biome_data else 0.02
+	var boulder_chance: float = biome_data.get("boulder_density") if "boulder_density" in biome_data else 0.12
+	var pine_chance: float = biome_data.get("pine_tree_density") if "pine_tree_density" in biome_data else 0.18
+	var crate_chance: float = biome_data.get("ground_crate_cache_chance") if "ground_crate_cache_chance" in biome_data else 0.10
 	
 	# 1. Overturned Sled Wreck
 	if rng.randf() < wreck_chance:
@@ -228,17 +247,13 @@ func _spawn_procedural_features(seed_val: int) -> void:
 		_spawn_abandoned_corpo_outpost(rng)
 		return
 	
-	# 3. Railroad Track Corridor
-	if rng.randf() < rail_chance:
-		_spawn_railroad_segment(rng)
-	
-	# 4. Obstacles (Boulders & Petrified Pines)
+	# 3. Obstacles (Glacial Boulders & Petrified Pines)
 	if rng.randf() < boulder_chance:
 		_spawn_glacial_boulder(rng)
 	if rng.randf() < pine_chance:
 		_spawn_petrified_pine(rng)
 	
-	# 5. Scatter Ground Crates
+	# 4. Scatter Ground Crates
 	if rng.randf() < crate_chance:
 		_spawn_loot_crate(rng)
 
@@ -248,52 +263,61 @@ func _setup_hot_spring_basin() -> void:
 	var basin_node: Node3D = Node3D.new()
 	basin_node.name = "HotSpringBasin"
 	
-	# Steaming Turquoise Water Surface Plane
+	# Calculate minimum rim vertex height so water is guaranteed 100% occluded by ground rim
+	var min_rim_y: float = 0.0
+	if not _cached_corner_heights.is_empty():
+		min_rim_y = _cached_corner_heights[0]
+		for h: float in _cached_corner_heights:
+			min_rim_y = minf(min_rim_y, h)
+	
+	var water_y: float = min_rim_y - 0.45 # Strictly below lowest rim vertex
+	
+	# Steaming Turquoise Water Surface Plane (Inner Concentric Hexagon)
 	var water_mesh: MeshInstance3D = MeshInstance3D.new()
 	var cyl: CylinderMesh = CylinderMesh.new()
-	cyl.top_radius = tile_outer_radius_m * 0.75
-	cyl.bottom_radius = tile_outer_radius_m * 0.75
+	cyl.top_radius = tile_outer_radius_m * 0.62
+	cyl.bottom_radius = tile_outer_radius_m * 0.62
 	cyl.height = 0.1
 	water_mesh.mesh = cyl
-	water_mesh.position.y = -0.4
+	water_mesh.position.y = water_y
 	
 	var water_mat: StandardMaterial3D = StandardMaterial3D.new()
-	water_mat.albedo_color = Color(0.1, 0.8, 0.75, 0.85) # Vivid thermal turquoise
+	water_mat.albedo_color = Color(0.12, 0.82, 0.78, 0.88) # Vivid turquoise
 	water_mat.roughness = 0.1
 	water_mat.metallic = 0.2
 	water_mesh.material_override = water_mat
 	basin_node.add_child(water_mesh)
 	
-	# Glowing Warm Light
+	# Glowing Warm Fiery-Orange Light (Indicates Heat)
 	var light: OmniLight3D = OmniLight3D.new()
-	light.light_color = Color(1.0, 0.75, 0.3, 1.0)
-	light.light_energy = 3.0
-	light.omni_range = tile_outer_radius_m * 1.8
-	light.position.y = 0.8
+	light.light_color = Color(1.0, 0.45, 0.05, 1.0) # Fiery heat amber-orange
+	light.light_energy = 4.5
+	light.omni_range = tile_outer_radius_m * 2.0
+	light.position.y = water_y + 0.8
 	basin_node.add_child(light)
 	
 	# Dense Steam Particles
 	var steam: CPUParticles3D = CPUParticles3D.new()
-	steam.amount = 28
-	steam.lifetime = 2.5
+	steam.amount = 32
+	steam.lifetime = 2.8
 	var p_mesh: SphereMesh = SphereMesh.new()
-	p_mesh.radius = 0.35
-	p_mesh.height = 0.7
+	p_mesh.radius = 0.4
+	p_mesh.height = 0.8
 	var steam_mat: StandardMaterial3D = StandardMaterial3D.new()
 	steam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	steam_mat.albedo_color = Color(0.9, 0.96, 1.0, 0.35)
+	steam_mat.albedo_color = Color(0.95, 0.98, 1.0, 0.38)
 	p_mesh.material = steam_mat
 	steam.mesh = p_mesh
 	steam.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-	steam.emission_sphere_radius = tile_outer_radius_m * 0.5
+	steam.emission_sphere_radius = tile_outer_radius_m * 0.45
 	steam.direction = Vector3(0, 1, 0)
-	steam.spread = 20.0
-	steam.gravity = Vector3(0, 1.2, 0)
-	steam.initial_velocity_min = 1.5
-	steam.initial_velocity_max = 3.5
-	steam.scale_amount_min = 0.6
-	steam.scale_amount_max = 2.2
-	steam.position.y = -0.2
+	steam.spread = 22.0
+	steam.gravity = Vector3(0, 1.4, 0)
+	steam.initial_velocity_min = 1.8
+	steam.initial_velocity_max = 3.8
+	steam.scale_amount_min = 0.7
+	steam.scale_amount_max = 2.4
+	steam.position.y = water_y + 0.1
 	basin_node.add_child(steam)
 	
 	add_child(basin_node)
@@ -363,33 +387,12 @@ func _spawn_abandoned_corpo_outpost(rng: RandomNumberGenerator) -> void:
 	add_child(outpost)
 	_spawned_props.append(outpost)
 
-func _spawn_railroad_segment(rng: RandomNumberGenerator) -> void:
-	var rail_node: Node3D = Node3D.new()
-	rail_node.name = "RailCorridor"
-	rail_node.position = Vector3(0, 0.05, 0)
-	rail_node.rotation_degrees.y = 30.0 * float(rng.randi_range(0, 5))
-	
-	var tie_bed: MeshInstance3D = MeshInstance3D.new()
-	var tie_box: BoxMesh = BoxMesh.new()
-	tie_box.size = Vector3(2.4, 0.06, tile_outer_radius_m * 2.0)
-	tie_bed.mesh = tie_box
-	rail_node.add_child(tie_bed)
-	
-	for x_off: float in [-0.8, 0.8]:
-		var rail: MeshInstance3D = MeshInstance3D.new()
-		var rail_box: BoxMesh = BoxMesh.new()
-		rail_box.size = Vector3(0.12, 0.15, tile_outer_radius_m * 2.0)
-		rail.mesh = rail_box
-		rail.position = Vector3(x_off, 0.08, 0)
-		rail_node.add_child(rail)
-	
-	add_child(rail_node)
-	_spawned_props.append(rail_node)
-
 func _spawn_glacial_boulder(rng: RandomNumberGenerator) -> void:
 	var boulder: StaticBody3D = StaticBody3D.new()
 	boulder.name = "GlacialBoulder"
-	boulder.position = Vector3(rng.randf_range(-2.5, 2.5), 0, rng.randf_range(-2.5, 2.5))
+	var bx: float = rng.randf_range(-2.2, 2.2)
+	var bz: float = rng.randf_range(-2.2, 2.2)
+	boulder.position = Vector3(bx, 0, bz)
 	boulder.collision_layer = 1
 	boulder.collision_mask = 6
 	
@@ -399,14 +402,14 @@ func _spawn_glacial_boulder(rng: RandomNumberGenerator) -> void:
 	sphere.radius = rad
 	sphere.height = rad * 1.8
 	mesh_inst.mesh = sphere
-	mesh_inst.position.y = rad * 0.7
+	mesh_inst.position.y = rad * 0.6
 	boulder.add_child(mesh_inst)
 	
 	var col: CollisionShape3D = CollisionShape3D.new()
 	var sphere_shape: SphereShape3D = SphereShape3D.new()
 	sphere_shape.radius = rad
 	col.shape = sphere_shape
-	col.position.y = rad * 0.7
+	col.position.y = rad * 0.6
 	boulder.add_child(col)
 	
 	add_child(boulder)
@@ -415,25 +418,41 @@ func _spawn_glacial_boulder(rng: RandomNumberGenerator) -> void:
 func _spawn_petrified_pine(rng: RandomNumberGenerator) -> void:
 	var tree: StaticBody3D = StaticBody3D.new()
 	tree.name = "PetrifiedPine"
-	tree.position = Vector3(rng.randf_range(-2.8, 2.8), 0, rng.randf_range(-2.8, 2.8))
+	var tx: float = rng.randf_range(-2.5, 2.5)
+	var tz: float = rng.randf_range(-2.5, 2.5)
+	tree.position = Vector3(tx, 0, tz)
 	tree.collision_layer = 1
 	tree.collision_mask = 6
 	
+	# Deep trunk cylinder embedded -0.8m beneath snow surface
 	var trunk: MeshInstance3D = MeshInstance3D.new()
 	var cyl: CylinderMesh = CylinderMesh.new()
 	cyl.top_radius = 0.15
-	cyl.bottom_radius = 0.35
-	cyl.height = 4.0
+	cyl.bottom_radius = 0.40
+	cyl.height = 4.8
 	trunk.mesh = cyl
-	trunk.position.y = 2.0
+	trunk.position.y = 1.6 # Top at +4.0m, bottom at -0.8m deep into ground
 	tree.add_child(trunk)
+	
+	# Snow collar base around tree root
+	var collar: MeshInstance3D = MeshInstance3D.new()
+	var collar_cyl: CylinderMesh = CylinderMesh.new()
+	collar_cyl.top_radius = 0.50
+	collar_cyl.bottom_radius = 0.75
+	collar_cyl.height = 0.4
+	collar.mesh = collar_cyl
+	collar.position.y = 0.1
+	var snow_mat: StandardMaterial3D = StandardMaterial3D.new()
+	snow_mat.albedo_color = Color(0.92, 0.95, 0.98, 1.0)
+	collar.material_override = snow_mat
+	tree.add_child(collar)
 	
 	var col: CollisionShape3D = CollisionShape3D.new()
 	var cyl_shape: CylinderShape3D = CylinderShape3D.new()
-	cyl_shape.radius = 0.35
-	cyl_shape.height = 4.0
+	cyl_shape.radius = 0.40
+	cyl_shape.height = 4.8
 	col.shape = cyl_shape
-	col.position.y = 2.0
+	col.position.y = 1.6
 	tree.add_child(col)
 	
 	add_child(tree)

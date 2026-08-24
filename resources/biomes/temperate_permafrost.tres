@@ -15,6 +15,7 @@ elevation_amplitude = 2.4
 elevation_frequency = 0.03
 hex_cell_outer_radius_m = 6.0
 cliff_height_threshold_m = 1.8
+cliff_fault_density = 0.18
 surface_weights = {
 &"pack": 0.45,
 &"powder": 0.25,
@@ -24,13 +25,12 @@ surface_weights = {
 &"snirt": 0.03,
 &"scree": 0.02
 }
-boulder_density = 0.15
-pine_tree_density = 0.25
+boulder_density = 0.12
+pine_tree_density = 0.18
 industrial_debris_density = 0.06
 crevasse_chasm_chance = 0.03
-overturned_sled_wreck_chance = 0.05
-abandoned_corpo_facility_chance = 0.03
-hot_spring_basin_chance = 0.07
-hot_spring_cluster_boost = 0.65
-railroad_corridor_chance = 0.08
-ground_crate_cache_chance = 0.12
+overturned_sled_wreck_chance = 0.04
+abandoned_corpo_facility_chance = 0.02
+hot_spring_basin_chance = 0.02
+hot_spring_cluster_boost = 0.35
+ground_crate_cache_chance = 0.10

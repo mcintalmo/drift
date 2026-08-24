@@ -12,6 +12,8 @@ const SectorBiomeDataClass = preload("res://scripts/resources/sector_biome_data.
 @export var is_hot_spring: bool = false
 @export var is_glacial_chasm: bool = false
 @export var is_plateau_cliff: bool = false
+@export var is_jump_ramp: bool = false
+@export var jump_ramp_direction: Vector2 = Vector2.ZERO
 
 var _static_body: StaticBody3D
 var _mesh_instance: MeshInstance3D
@@ -24,18 +26,27 @@ func _ready() -> void:
 	if not _static_body:
 		_build_tile_geometry([])
 
-## Initializes the hex tile with balanced rolling snowdrifts, 1 grand hill plateau, and 1 sunken glacial chasm/frozen lake
-func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring_flag: bool = false) -> void:
+## Initializes the hex tile with balanced rolling snowdrifts, grand hill plateaus, chasm jump ramps, and sunken glacial lakes
+func initialize_tile(
+	coord: Vector2i,
+	biome: Resource,
+	seed_val: int,
+	hot_spring_flag: bool = false,
+	jump_ramp_flag: bool = false,
+	ramp_dir: Vector2 = Vector2.ZERO
+) -> void:
 	axial_coord = coord
 	biome_data = biome if biome else SectorBiomeDataClass.new()
 	tile_outer_radius_m = biome_data.get("hex_cell_outer_radius_m") if "hex_cell_outer_radius_m" in biome_data else 6.0
 	is_hot_spring = hot_spring_flag
+	is_jump_ramp = jump_ramp_flag
+	jump_ramp_direction = ramp_dir
 	
 	# 3D world center coordinates in X-Z plane
 	var world_x: float = tile_outer_radius_m * SQRT_3 * (float(coord.x) + float(coord.y) * 0.5)
 	var world_z: float = tile_outer_radius_m * 1.5 * float(coord.y)
 	
-	# 1. Balanced rolling base elevation noise (between flat and hyper-bumpy: rich snowdrifts & carving knolls)
+	# 1. Balanced rolling base elevation noise (rich snowdrifts & carving knolls)
 	var base_noise: FastNoiseLite = FastNoiseLite.new()
 	base_noise.seed = seed_val
 	var freq: float = biome_data.get("elevation_frequency") if "elevation_frequency" in biome_data else 0.022
@@ -43,7 +54,7 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 	base_noise.frequency = freq
 	base_elevation_m = base_noise.get_noise_2d(world_x, world_z) * amp
 	
-	# 2. Discrete Macro Plateau / Chasm Tiers (Guarantees 1 Grand Hill Plateau and 1 Frozen Lake Chasm)
+	# 2. Discrete Macro Plateau / Chasm Tiers
 	var plateau_noise: FastNoiseLite = FastNoiseLite.new()
 	plateau_noise.seed = seed_val + 7771
 	plateau_noise.frequency = 0.012
@@ -59,13 +70,15 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 	elif p_val < c_thresh and not is_hot_spring:
 		is_glacial_chasm = true
 		macro_tier_offset = -6.5 # Sunken Glacial Crevasse / Frozen Lake (-6.5m)
+	elif is_jump_ramp:
+		macro_tier_offset = 1.4 # Natural launch hill beside crevasse
 		
 	position = Vector3(world_x, base_elevation_m + macro_tier_offset, world_z)
 	
 	if is_hot_spring:
 		surface_type = &"slush"
 	elif is_glacial_chasm:
-		surface_type = &"black_ice" # Glassy mirror black ice on the sunken lake
+		surface_type = &"black_ice" # Glassy mirror black ice on sunken lake
 	else:
 		var surface_roll: float = absf(base_noise.get_noise_2d(world_x + 500.0, world_z + 500.0))
 		if biome_data.has_method("sample_surface_type"):
@@ -73,14 +86,14 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 		else:
 			surface_type = &"pack"
 	
-	# Sample continuous rolling hill noise for corner vertices
-	_cached_corner_heights = _compute_continuous_corner_heights(world_x, world_z, base_noise, amp)
+	# Corner heights sample continuous rolling hill noise + jump ramp kicker profile
+	_cached_corner_heights = _compute_corner_heights(world_x, world_z, base_noise, amp)
 	
 	_build_tile_geometry(_cached_corner_heights)
 	_spawn_procedural_features(seed_val)
 
-## Evaluates continuous world-space rolling noise height at the 6 corner vertices
-func _compute_continuous_corner_heights(center_x: float, center_z: float, base_noise: FastNoiseLite, amp: float) -> Array[float]:
+## Evaluates continuous rolling elevation and builds jump ramp kicker profile facing the chasm
+func _compute_corner_heights(center_x: float, center_z: float, base_noise: FastNoiseLite, amp: float) -> Array[float]:
 	var corner_heights: Array[float] = []
 	
 	for i: int in range(6):
@@ -90,9 +103,17 @@ func _compute_continuous_corner_heights(center_x: float, center_z: float, base_n
 		
 		# Sample continuous base rolling elevation
 		var corner_world_elevation: float = base_noise.get_noise_2d(corner_world_x, corner_world_z) * amp
-		
-		# Relative Y height offset in this tile's local space
 		var local_y: float = corner_world_elevation - base_elevation_m
+		
+		# If this tile is a jump ramp, elevate the lip facing the chasm into a natural kicker (+1.2m)
+		if is_jump_ramp and jump_ramp_direction.length_squared() > 0.01:
+			var corner_dir_2d: Vector2 = Vector2(cos(angle_rad), sin(angle_rad)).normalized()
+			var ramp_dot: float = corner_dir_2d.dot(jump_ramp_direction.normalized())
+			if ramp_dot > 0.1:
+				local_y += ramp_dot * 1.35 # Kicker launch lip
+			else:
+				local_y -= absf(ramp_dot) * 0.4 # Smooth approach grade
+				
 		corner_heights.append(local_y)
 		
 	return corner_heights
@@ -137,11 +158,16 @@ func _generate_model_c_mesh(radius: float, depth: float, corner_heights: Array[f
 		var vz: float = radius * sin(angle_rad)
 		var vy: float = corner_heights[i] if i < corner_heights.size() else 0.0
 		top_vertices.append(Vector3(vx, vy, vz))
-		# Bottom vertices extend straight down vertically deep into the bedrock (no gaps)
+		# Bottom vertices extend straight down vertically deep into bedrock (no gaps)
 		bottom_vertices.append(Vector3(vx, -depth, vz))
 	
-	# Center Vertex: shallow basin if hot spring (-0.9m), level if normal terrain
-	var center_y: float = -0.9 if is_hot_spring else 0.0
+	# Center Vertex: shallow basin if hot spring (-0.9m), slight rise if jump ramp (+0.5m), level otherwise
+	var center_y: float = 0.0
+	if is_hot_spring:
+		center_y = -0.9
+	elif is_jump_ramp:
+		center_y = 0.45
+		
 	var top_center: Vector3 = Vector3(0.0, center_y, 0.0)
 	var bottom_center: Vector3 = Vector3(0.0, -depth, 0.0)
 	
@@ -197,9 +223,9 @@ func _create_surface_material(surface: StringName) -> StandardMaterial3D:
 		mat.roughness = 0.04
 		mat.metallic = 0.65
 		return mat
-	elif is_plateau_cliff:
-		mat.albedo_color = Color(0.85, 0.90, 0.96, 1.0) # Grand snow plateau top
-		mat.roughness = 0.65
+	elif is_plateau_cliff or is_jump_ramp:
+		mat.albedo_color = Color(0.88, 0.92, 0.98, 1.0) # Grand snow plateau and packed jump ramp
+		mat.roughness = 0.60
 		return mat
 		
 	match surface:
@@ -240,7 +266,8 @@ func _spawn_procedural_features(seed_val: int) -> void:
 		_setup_hot_spring_basin()
 		return
 	
-	if is_glacial_chasm or not biome_data:
+	# Don't clutter jump ramps or chasm lake with dense trees so jumps are clear and thrilling
+	if is_glacial_chasm or is_jump_ramp or not biome_data:
 		return
 	
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()

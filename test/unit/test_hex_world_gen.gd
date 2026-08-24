@@ -12,6 +12,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_biome_surface_sampling())
 	results.append(_test_adjacent_hex_vertex_exact_match())
 	results.append(_test_hot_spring_basin_creation())
+	results.append(_test_chasm_jump_ramp_generation())
 	results.append(_test_procedural_connected_railroad())
 	results.append(_test_sector_manager_streaming_and_pooling())
 	return results
@@ -76,7 +77,8 @@ func _test_biome_surface_sampling() -> Dictionary:
 func _test_adjacent_hex_vertex_exact_match() -> Dictionary:
 	var biome: SectorBiomeData = SectorBiomeData.new()
 	biome.hex_cell_outer_radius_m = 6.0
-	biome.elevation_amplitude = 1.2
+	biome.elevation_amplitude = 1.85
+	biome.elevation_frequency = 0.022
 	
 	var tile_a: HexWorldTile = HexWorldTile.new()
 	tile_a.initialize_tile(Vector2i(0, 0), biome, 4281, false)
@@ -89,8 +91,8 @@ func _test_adjacent_hex_vertex_exact_match() -> Dictionary:
 	noise.frequency = biome.elevation_frequency
 	var amp: float = biome.elevation_amplitude
 	
-	var corners_a: Array[float] = tile_a._compute_continuous_corner_heights(tile_a.position.x, tile_a.position.z, noise, amp)
-	var corners_b: Array[float] = tile_b._compute_continuous_corner_heights(tile_b.position.x, tile_b.position.z, noise, amp)
+	var corners_a: Array[float] = tile_a._compute_corner_heights(tile_a.position.x, tile_a.position.z, noise, amp)
+	var corners_b: Array[float] = tile_b._compute_corner_heights(tile_b.position.x, tile_b.position.z, noise, amp)
 	
 	var world_y_a0: float = tile_a.position.y + corners_a[0]
 	var world_y_b2: float = tile_b.position.y + corners_b[2]
@@ -133,6 +135,35 @@ func _test_hot_spring_basin_creation() -> Dictionary:
 		"passed": passed,
 		"message": "Hot spring basin: is_hot_spring=%s, in_group=%s, warmth inside=%.1f C, far=%.1f C" % [
 			str(is_hot_spring_flag), str(is_in_vent_group), warmth_inside, warmth_far
+		]
+	}
+
+func _test_chasm_jump_ramp_generation() -> Dictionary:
+	var tile: HexWorldTile = HexWorldTile.new()
+	var biome: SectorBiomeData = SectorBiomeData.new()
+	biome.hex_cell_outer_radius_m = 6.0
+	
+	# Initialize tile as a jump ramp pointing East (Vector2(1, 0))
+	tile.initialize_tile(Vector2i(0, 0), biome, 1337, false, true, Vector2(1, 0))
+	
+	var is_ramp_flag: bool = tile.is_jump_ramp
+	var noise: FastNoiseLite = FastNoiseLite.new()
+	noise.seed = 1337
+	noise.frequency = biome.elevation_frequency
+	var corners: Array[float] = tile._compute_corner_heights(tile.position.x, tile.position.z, noise, biome.elevation_amplitude)
+	
+	# East corner (index 0 at +30 deg) should have positive kicker elevation compared to approach
+	var east_kicker: float = corners[0]
+	var west_approach: float = corners[3]
+	
+	var passed: bool = is_ramp_flag and (east_kicker > west_approach)
+	
+	tile.free()
+	return {
+		"name": "test_chasm_jump_ramp_generation",
+		"passed": passed,
+		"message": "Chasm Jump Ramp: is_ramp=%s, East Kicker Lip=%.2f m > West Approach=%.2f m" % [
+			str(is_ramp_flag), east_kicker, west_approach
 		]
 	}
 

@@ -20,6 +20,7 @@ signal railroad_generated(path_length: int)
 # Active Tile Registry: Vector2i(q, r) -> Node3D
 var _active_tiles: Dictionary = {}
 var _hot_spring_registry: Dictionary = {} # Vector2i -> bool
+var _chasm_registry: Dictionary = {} # Vector2i -> bool
 var _current_center_coord: Vector2i = Vector2i(9999, 9999)
 var _tiles_container: Node3D
 var _rails_container: Node3D
@@ -64,7 +65,7 @@ func _physics_process(_delta: float) -> void:
 		_current_center_coord = target_coord
 		_update_streaming_rings(target_coord)
 
-## Generates concentric hex tiles around the center and builds connected railway corridor
+## Generates concentric hex tiles around center and builds connected railway corridor
 func generate_initial_sector(center_coord: Vector2i = Vector2i.ZERO) -> void:
 	if not _tiles_container:
 		_tiles_container = Node3D.new()
@@ -86,6 +87,9 @@ func generate_initial_sector(center_coord: Vector2i = Vector2i.ZERO) -> void:
 func _update_streaming_rings(center_coord: Vector2i) -> void:
 	var needed_coords: Array[Vector2i] = get_hex_ring_cluster(center_coord, render_radius_rings)
 	
+	# Pre-evaluate chasm map so jump ramp kickers know where chasms lie
+	_pre_evaluate_chasm_map(needed_coords)
+	
 	# 1. Spawn missing tiles
 	for coord: Vector2i in needed_coords:
 		if not _active_tiles.has(coord):
@@ -100,8 +104,31 @@ func _update_streaming_rings(center_coord: Vector2i) -> void:
 	for coord: Vector2i in to_remove:
 		_despawn_tile_at(coord)
 
+func _pre_evaluate_chasm_map(coords: Array[Vector2i]) -> void:
+	var plateau_noise: FastNoiseLite = FastNoiseLite.new()
+	plateau_noise.seed = world_seed + 7771
+	plateau_noise.frequency = 0.012
+	var r_outer: float = biome_data.get("hex_cell_outer_radius_m") if "hex_cell_outer_radius_m" in biome_data else 6.0
+	var c_thresh: float = biome_data.get("chasm_threshold") if "chasm_threshold" in biome_data else -0.32
+	
+	for coord: Vector2i in coords:
+		if not _chasm_registry.has(coord):
+			var wx: float = r_outer * SQRT_3 * (float(coord.x) + float(coord.y) * 0.5)
+			var wz: float = r_outer * 1.5 * float(coord.y)
+			var p_val: float = plateau_noise.get_noise_2d(wx, wz)
+			_chasm_registry[coord] = (p_val < c_thresh)
+
 func _spawn_tile_at(coord: Vector2i) -> void:
 	var is_hot_spring: bool = _evaluate_hot_spring_spawn(coord)
+	var is_chasm: bool = _chasm_registry.get(coord, false) and not is_hot_spring
+	
+	# Evaluate if adjacent to a chasm to form a natural Jump Ramp kicker
+	var is_jump_ramp: bool = false
+	var ramp_dir: Vector2 = Vector2.ZERO
+	if not is_chasm and not is_hot_spring:
+		var ramp_info: Dictionary = _check_chasm_adjacency_ramp(coord)
+		is_jump_ramp = ramp_info.get("is_ramp", false)
+		ramp_dir = ramp_info.get("dir", Vector2.ZERO)
 	
 	var tile: Node3D = HexWorldTileClass.new()
 	tile.name = "Tile_%d_%d" % [coord.x, coord.y]
@@ -111,9 +138,30 @@ func _spawn_tile_at(coord: Vector2i) -> void:
 		add_child(tile)
 		
 	if tile.has_method("initialize_tile"):
-		tile.initialize_tile(coord, biome_data, world_seed, is_hot_spring)
+		tile.initialize_tile(coord, biome_data, world_seed, is_hot_spring, is_jump_ramp, ramp_dir)
 	_active_tiles[coord] = tile
 	tile_spawned.emit(coord, tile)
+
+func _check_chasm_adjacency_ramp(coord: Vector2i) -> Dictionary:
+	var neighbors_offsets: Array[Vector2i] = [
+		Vector2i(1, 0), Vector2i(1, -1), Vector2i(0, -1),
+		Vector2i(-1, 0), Vector2i(-1, 1), Vector2i(0, 1)
+	]
+	
+	var r_outer: float = biome_data.get("hex_cell_outer_radius_m") if "hex_cell_outer_radius_m" in biome_data else 6.0
+	var my_pos: Vector3 = axial_to_world_pos(coord)
+	
+	for offset: Vector2i in neighbors_offsets:
+		var n_coord: Vector2i = coord + offset
+		if _chasm_registry.get(n_coord, false) == true:
+			var chasm_pos: Vector3 = axial_to_world_pos(n_coord)
+			var dir_3d: Vector3 = (chasm_pos - my_pos).normalized()
+			return {
+				"is_ramp": true,
+				"dir": Vector2(dir_3d.x, dir_3d.z)
+			}
+			
+	return {"is_ramp": false, "dir": Vector2.ZERO}
 
 ## Evaluates hot spring spawning: 0% chance on adjacent hexes, 10% on 1-hex separated spaces (Ring 2)
 func _evaluate_hot_spring_spawn(coord: Vector2i) -> bool:
@@ -161,7 +209,7 @@ func _despawn_tile_at(coord: Vector2i) -> void:
 		_active_tiles.erase(coord)
 		tile_despawned.emit(coord)
 
-## Generates a continuous, obstacle-avoiding railroad track across the sector using AStar2D on hex coordinates
+## Generates continuous, obstacle-avoiding railroad track across the sector using AStar2D on hex coordinates
 func _generate_connected_railroad_corridor() -> void:
 	if not _rails_container:
 		return
@@ -185,10 +233,13 @@ func _generate_connected_railroad_corridor() -> void:
 		var world_pos: Vector3 = tile.position
 		astar.add_point(id_counter, Vector2(world_pos.x, world_pos.z))
 		
-		# Set point weight (avoid hot springs and steep slopes)
+		# Set point weight (avoid hot springs and crevasses)
 		var is_spring: bool = _hot_spring_registry.get(coord, false)
+		var is_chasm: bool = _chasm_registry.get(coord, false)
 		if is_spring:
-			astar.set_point_weight_scale(id_counter, 150.0) # High cost: avoid steaming pools
+			astar.set_point_weight_scale(id_counter, 150.0) # Avoid steaming pools
+		elif is_chasm:
+			astar.set_point_weight_scale(id_counter, 100.0) # Avoid deep chasm floors
 		else:
 			astar.set_point_weight_scale(id_counter, 1.0)
 			
@@ -352,7 +403,7 @@ func get_hex_ring_cluster(center: Vector2i, radius: int) -> Array[Vector2i]:
 			results.append(center + Vector2i(q, r))
 	return results
 
-## Converts world 3D position to the nearest axial hex tile coordinate (q, r)
+## Converts world 3D position to nearest axial hex tile coordinate (q, r)
 func world_pos_to_axial_coord(world_pos: Vector3) -> Vector2i:
 	var r_outer: float = 6.0
 	if biome_data and "hex_cell_outer_radius_m" in biome_data:

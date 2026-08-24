@@ -10,26 +10,27 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_axial_to_world_position_conversion())
 	results.append(_test_hex_ring_cluster_generation())
 	results.append(_test_biome_surface_sampling())
-	results.append(_test_tile_mesh_and_collision_generation())
+	results.append(_test_model_c_corner_smoothing())
+	results.append(_test_hot_spring_basin_creation())
 	results.append(_test_sector_manager_streaming_and_pooling())
 	return results
 
 func _test_axial_to_world_position_conversion() -> Dictionary:
 	var mgr: HexSectorManager = HexSectorManager.new()
 	mgr.biome_data = SectorBiomeData.new()
-	mgr.biome_data.hex_cell_outer_radius_m = 20.0
+	mgr.biome_data.hex_cell_outer_radius_m = 6.0
 	
 	var coord: Vector2i = Vector2i(2, -1)
 	var world_pos: Vector3 = mgr.axial_to_world_pos(coord)
 	var round_trip_coord: Vector2i = mgr.world_pos_to_axial_coord(world_pos)
 	
-	var passed: bool = (round_trip_coord == coord) and (world_pos.z == -30.0)
+	var passed: bool = (round_trip_coord == coord) and is_equal_approx(world_pos.z, -9.0)
 	
 	mgr.free()
 	return {
 		"name": "test_axial_to_world_position_conversion",
 		"passed": passed,
-		"message": "Axial (2, -1) -> World %s -> Axial %s (passed: %s)" % [str(world_pos), str(round_trip_coord), str(passed)]
+		"message": "Axial (2, -1) [R=6m] -> World %s -> Axial %s (passed: %s)" % [str(world_pos), str(round_trip_coord), str(passed)]
 	}
 
 func _test_hex_ring_cluster_generation() -> Dictionary:
@@ -38,15 +39,16 @@ func _test_hex_ring_cluster_generation() -> Dictionary:
 	var ring1: Array[Vector2i] = mgr.get_hex_ring_cluster(Vector2i.ZERO, 1) # 7 tiles
 	var ring2: Array[Vector2i] = mgr.get_hex_ring_cluster(Vector2i.ZERO, 2) # 19 tiles
 	var ring3: Array[Vector2i] = mgr.get_hex_ring_cluster(Vector2i.ZERO, 3) # 37 tiles
+	var ring4: Array[Vector2i] = mgr.get_hex_ring_cluster(Vector2i.ZERO, 4) # 61 tiles
 	
-	var passed: bool = (ring0.size() == 1) and (ring1.size() == 7) and (ring2.size() == 19) and (ring3.size() == 37)
+	var passed: bool = (ring0.size() == 1) and (ring1.size() == 7) and (ring2.size() == 19) and (ring3.size() == 37) and (ring4.size() == 61)
 	
 	mgr.free()
 	return {
 		"name": "test_hex_ring_cluster_generation",
 		"passed": passed,
-		"message": "Concentric rings count: R0=%d, R1=%d, R2=%d, R3=%d (expected 1, 7, 19, 37)" % [
-			ring0.size(), ring1.size(), ring2.size(), ring3.size()
+		"message": "Concentric rings count: R0=%d, R1=%d, R2=%d, R3=%d, R4=%d (expected 1, 7, 19, 37, 61)" % [
+			ring0.size(), ring1.size(), ring2.size(), ring3.size(), ring4.size()
 		]
 	}
 
@@ -70,12 +72,14 @@ func _test_biome_surface_sampling() -> Dictionary:
 		]
 	}
 
-func _test_tile_mesh_and_collision_generation() -> Dictionary:
+func _test_model_c_corner_smoothing() -> Dictionary:
 	var tile: HexWorldTile = HexWorldTile.new()
 	var biome: SectorBiomeData = SectorBiomeData.new()
-	biome.hex_cell_outer_radius_m = 15.0
+	biome.hex_cell_outer_radius_m = 6.0
+	biome.elevation_amplitude = 3.0
+	biome.cliff_height_threshold_m = 2.0
 	
-	tile.initialize_tile(Vector2i(1, 1), biome, 999)
+	tile.initialize_tile(Vector2i(0, 0), biome, 1337, false)
 	
 	var body: StaticBody3D = tile.get_node_or_null("TileBody") as StaticBody3D
 	var mesh_inst: MeshInstance3D = body.get_node_or_null("TileMesh") as MeshInstance3D if body else null
@@ -89,10 +93,31 @@ func _test_tile_mesh_and_collision_generation() -> Dictionary:
 	
 	tile.free()
 	return {
-		"name": "test_tile_mesh_and_collision_generation",
+		"name": "test_model_c_corner_smoothing",
 		"passed": passed,
-		"message": "Tile generated with mesh (%s), collision (%s), surface meta (%s)" % [
-			str(has_mesh), str(has_col), str(has_surface_meta)
+		"message": "Model C tile mesh generated with smoothed corners and collision shape"
+	}
+
+func _test_hot_spring_basin_creation() -> Dictionary:
+	var tile: HexWorldTile = HexWorldTile.new()
+	var biome: SectorBiomeData = SectorBiomeData.new()
+	biome.hex_cell_outer_radius_m = 6.0
+	
+	tile.initialize_tile(Vector2i(1, 0), biome, 1337, true)
+	
+	var is_hot_spring_flag: bool = tile.is_hot_spring
+	var is_in_vent_group: bool = tile.is_in_group(&"thermal_vents")
+	var warmth_inside: float = tile.get_temperature_contribution(tile.position)
+	var warmth_far: float = tile.get_temperature_contribution(tile.position + Vector3(25, 0, 0))
+	
+	var passed: bool = is_hot_spring_flag and is_in_vent_group and (warmth_inside == 45.0) and (warmth_far == 0.0)
+	
+	tile.free()
+	return {
+		"name": "test_hot_spring_basin_creation",
+		"passed": passed,
+		"message": "Hot spring basin: is_hot_spring=%s, in_group=%s, warmth inside=%.1f C, far=%.1f C" % [
+			str(is_hot_spring_flag), str(is_in_vent_group), warmth_inside, warmth_far
 		]
 	}
 

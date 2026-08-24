@@ -1,14 +1,13 @@
-[gd_scene load_steps=15 format=3 uid="uid://c5v8m2lap8w1"]
+[gd_scene load_steps=14 format=3 uid="uid://c5v8m2lap8w1"]
 
 [ext_resource type="Script" path="res://scripts/world/hex_sector_manager.gd" id="1_sector_mgr"]
 [ext_resource type="Resource" path="res://resources/biomes/temperate_permafrost.tres" id="2_biome"]
 [ext_resource type="Script" path="res://scripts/world/dynamic_weather_manager.gd" id="3_weather_mgr"]
-[ext_resource type="PackedScene" path="res://scenes/world/ThermalVent.tscn" id="4_vent"]
-[ext_resource type="PackedScene" path="res://scenes/entities/sled/SledChassis.tscn" id="5_sled"]
-[ext_resource type="PackedScene" path="res://scenes/entities/pilot/Pilot.tscn" id="6_pilot"]
-[ext_resource type="PackedScene" path="res://scenes/camera/IsometricCameraRig.tscn" id="7_cam"]
-[ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="8_hud"]
-[ext_resource type="PackedScene" path="res://scenes/ui/HexInventoryUI.tscn" id="9_inv_ui"]
+[ext_resource type="PackedScene" path="res://scenes/entities/sled/SledChassis.tscn" id="4_sled"]
+[ext_resource type="PackedScene" path="res://scenes/entities/pilot/Pilot.tscn" id="5_pilot"]
+[ext_resource type="PackedScene" path="res://scenes/camera/IsometricCameraRig.tscn" id="6_cam"]
+[ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="7_hud"]
+[ext_resource type="PackedScene" path="res://scenes/ui/HexInventoryUI.tscn" id="8_inv_ui"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sandbox"]
 sky_top_color = Color(0.18, 0.38, 0.62, 1)
@@ -70,21 +69,18 @@ script = ExtResource("1_sector_mgr")
 active_target = NodePath("../Pilot")
 biome_data = ExtResource("2_biome")
 world_seed = 4281
-render_radius_rings = 2
+render_radius_rings = 4
 
-[node name="ThermalVent" parent="." groups=["thermal_vents"] instance=ExtResource("4_vent")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 14)
-
-[node name="SledChassis" parent="." groups=["player_sled"] instance=ExtResource("5_sled")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.5, 0.8, 0)
+[node name="SledChassis" parent="." groups=["player_sled"] instance=ExtResource("4_sled")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0.6, 0)
 is_occupied = false
 
-[node name="Pilot" parent="." groups=["player_pilot"] instance=ExtResource("6_pilot")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+[node name="Pilot" parent="." groups=["player_pilot"] instance=ExtResource("5_pilot")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
 
-[node name="IsometricCameraRig" parent="." node_paths=PackedStringArray("target_node") instance=ExtResource("7_cam")]
+[node name="IsometricCameraRig" parent="." node_paths=PackedStringArray("target_node") instance=ExtResource("6_cam")]
 target_node = NodePath("../Pilot")
 
-[node name="HUD" parent="." instance=ExtResource("8_hud")]
+[node name="HUD" parent="." instance=ExtResource("7_hud")]
 
-[node name="HexInventoryUI" parent="." instance=ExtResource("9_inv_ui")]
+[node name="HexInventoryUI" parent="." instance=ExtResource("8_inv_ui")]

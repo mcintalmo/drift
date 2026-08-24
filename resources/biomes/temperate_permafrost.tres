@@ -11,9 +11,10 @@ base_ambient_temp_c = -14.0
 min_storm_temp_c = -36.0
 blizzard_frequency = 0.3
 base_smog_index = 0.05
-elevation_amplitude = 2.5
-elevation_frequency = 0.02
-hex_cell_outer_radius_m = 18.0
+elevation_amplitude = 2.4
+elevation_frequency = 0.03
+hex_cell_outer_radius_m = 6.0
+cliff_height_threshold_m = 1.8
 surface_weights = {
 &"pack": 0.45,
 &"powder": 0.25,
@@ -23,12 +24,13 @@ surface_weights = {
 &"snirt": 0.03,
 &"scree": 0.02
 }
-boulder_density = 0.2
-pine_tree_density = 0.35
-industrial_debris_density = 0.08
-crevasse_chasm_chance = 0.04
-overturned_sled_wreck_chance = 0.09
-abandoned_corpo_facility_chance = 0.04
-geothermal_vent_chance = 0.1
-railroad_corridor_chance = 0.12
-ground_crate_cache_chance = 0.18
+boulder_density = 0.15
+pine_tree_density = 0.25
+industrial_debris_density = 0.06
+crevasse_chasm_chance = 0.03
+overturned_sled_wreck_chance = 0.05
+abandoned_corpo_facility_chance = 0.03
+hot_spring_basin_chance = 0.07
+hot_spring_cluster_boost = 0.65
+railroad_corridor_chance = 0.08
+ground_crate_cache_chance = 0.12

@@ -12,11 +12,12 @@ signal sector_generated(active_tile_count: int)
 @export var active_target: Node3D
 @export var biome_data: Resource
 @export var world_seed: int = 1337
-@export_range(1, 4, 1) var render_radius_rings: int = 2 # 2 rings = 19 hex tiles, 3 rings = 37 tiles
+@export_range(1, 6, 1) var render_radius_rings: int = 4 # 4 rings = 61 hex tiles, 5 rings = 91 tiles
 @export var is_dynamic_streaming_enabled: bool = true
 
 # Active Tile Registry: Vector2i(q, r) -> Node3D
 var _active_tiles: Dictionary = {}
+var _hot_spring_registry: Dictionary = {} # Vector2i -> bool
 var _current_center_coord: Vector2i = Vector2i(9999, 9999)
 var _tiles_container: Node3D
 
@@ -84,6 +85,8 @@ func _update_streaming_rings(center_coord: Vector2i) -> void:
 		_despawn_tile_at(coord)
 
 func _spawn_tile_at(coord: Vector2i) -> void:
+	var is_hot_spring: bool = _evaluate_hot_spring_spawn(coord)
+	
 	var tile: Node3D = HexWorldTileClass.new()
 	tile.name = "Tile_%d_%d" % [coord.x, coord.y]
 	if _tiles_container:
@@ -92,9 +95,37 @@ func _spawn_tile_at(coord: Vector2i) -> void:
 		add_child(tile)
 		
 	if tile.has_method("initialize_tile"):
-		tile.initialize_tile(coord, biome_data, world_seed)
+		tile.initialize_tile(coord, biome_data, world_seed, is_hot_spring)
 	_active_tiles[coord] = tile
 	tile_spawned.emit(coord, tile)
+
+func _evaluate_hot_spring_spawn(coord: Vector2i) -> bool:
+	if _hot_spring_registry.has(coord):
+		return _hot_spring_registry[coord]
+	
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = world_seed + (coord.x * 524287) ^ (coord.y * 131071)
+	
+	var base_chance: float = biome_data.get("hot_spring_basin_chance") if "hot_spring_basin_chance" in biome_data else 0.07
+	var cluster_boost: float = biome_data.get("hot_spring_cluster_boost") if "hot_spring_cluster_boost" in biome_data else 0.65
+	
+	# Check if any neighbor is already a hot spring to create natural oasis clusters
+	var has_hot_spring_neighbor: bool = false
+	var neighbors: Array[Vector2i] = [
+		Vector2i(coord.x + 1, coord.y), Vector2i(coord.x + 1, coord.y - 1),
+		Vector2i(coord.x, coord.y - 1), Vector2i(coord.x - 1, coord.y),
+		Vector2i(coord.x - 1, coord.y + 1), Vector2i(coord.x, coord.y + 1)
+	]
+	
+	for n: Vector2i in neighbors:
+		if _hot_spring_registry.get(n, false) == true:
+			has_hot_spring_neighbor = true
+			break
+	
+	var effective_chance: float = cluster_boost if has_hot_spring_neighbor else base_chance
+	var result: bool = rng.randf() < effective_chance
+	_hot_spring_registry[coord] = result
+	return result
 
 func _despawn_tile_at(coord: Vector2i) -> void:
 	if _active_tiles.has(coord):
@@ -116,7 +147,7 @@ func get_hex_ring_cluster(center: Vector2i, radius: int) -> Array[Vector2i]:
 
 ## Converts world 3D position to the nearest axial hex tile coordinate (q, r)
 func world_pos_to_axial_coord(world_pos: Vector3) -> Vector2i:
-	var r_outer: float = 18.0
+	var r_outer: float = 6.0
 	if biome_data and "hex_cell_outer_radius_m" in biome_data:
 		r_outer = float(biome_data.get("hex_cell_outer_radius_m"))
 	var q_frac: float = (sqrt(3.0) / 3.0 * world_pos.x - 1.0 / 3.0 * world_pos.z) / r_outer
@@ -125,7 +156,7 @@ func world_pos_to_axial_coord(world_pos: Vector3) -> Vector2i:
 
 ## Converts axial hex tile coordinate (q, r) to center 3D world position
 func axial_to_world_pos(coord: Vector2i) -> Vector3:
-	var r_outer: float = 18.0
+	var r_outer: float = 6.0
 	if biome_data and "hex_cell_outer_radius_m" in biome_data:
 		r_outer = float(biome_data.get("hex_cell_outer_radius_m"))
 	var x: float = r_outer * SQRT_3 * (float(coord.x) + float(coord.y) * 0.5)

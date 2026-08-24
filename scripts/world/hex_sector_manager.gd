@@ -307,6 +307,23 @@ func _spawn_tile_at(coord: Vector2i) -> void:
 		
 	tile_spawned.emit(coord, tile)
 
+## Computes the lateral meander offset of the canyon corridor at a given longitudinal distance
+func get_canyon_meander_offset(along: float, axis_len: float) -> float:
+	if axis_len <= 10.0:
+		return 0.0
+		
+	# Smooth fade at entrance (0..60m) and exit (L-60m..L) so portals stay centered
+	var t_start: float = clampf(along / 60.0, 0.0, 1.0)
+	var t_end: float = clampf((axis_len - along) / 60.0, 0.0, 1.0)
+	var envelope: float = smoothstep(0.0, 1.0, t_start) * smoothstep(0.0, 1.0, t_end)
+	
+	# Harmonic meander waves (sweeping S-curves across canyon)
+	var wave1: float = sin(along * (TAU / 320.0)) * 28.0
+	var wave2: float = sin(along * (TAU / 680.0) + 1.2) * 20.0
+	var wave3: float = cos(along * (TAU / 180.0) + 0.6) * 8.0
+	
+	return (wave1 + wave2 + wave3) * envelope
+
 ## Evaluates whether a coordinate lies on the lateral boundary of the valley corridor
 func _evaluate_boundary_status(coord: Vector2i) -> Dictionary:
 	var mode: int = biome_data.get("boundary_mode") if "boundary_mode" in biome_data else SectorBiomeDataClass.BoundaryMode.VALLEY_CLIFF_FACES
@@ -331,7 +348,10 @@ func _evaluate_boundary_status(coord: Vector2i) -> Dictionary:
 	
 	var rel: Vector3 = w_pos - w_start
 	var along: float = rel.dot(axis_dir)
-	var lat_dist: float = absf(rel.dot(lat_dir))
+	var lat_val: float = rel.dot(lat_dir)
+	
+	var meander_center: float = get_canyon_meander_offset(along, axis_len)
+	var lat_dist: float = absf(lat_val - meander_center)
 	
 	var valley_width_m: float = float(biome_data.get("valley_width_hexes") if "valley_width_hexes" in biome_data else 8) * 6.0 * SQRT_3 * 0.5
 	var outside_corridor: bool = (lat_dist > valley_width_m) or (along < -18.0) or (along > axis_len + 18.0)
@@ -473,7 +493,11 @@ func _plan_macro_railroad_corridor(start: Vector2i, end: Vector2i) -> void:
 			var w_pos: Vector3 = axial_to_world_pos(c)
 			
 			var rel: Vector3 = w_pos - w_start
-			var lat_dist: float = absf(rel.dot(lat_dir))
+			var along: float = rel.dot(axis_dir)
+			var lat_val: float = rel.dot(lat_dir)
+			var meander_center: float = get_canyon_meander_offset(along, axis_len)
+			var lat_dist: float = absf(lat_val - meander_center)
+			
 			if lat_dist > max_lat_allowed and c != start and c != end:
 				continue
 				
@@ -483,12 +507,15 @@ func _plan_macro_railroad_corridor(start: Vector2i, end: Vector2i) -> void:
 			var p_val: float = hill_noise.get_noise_2d(w_pos.x, w_pos.z)
 			var is_chasm: bool = (p_val < c_thresh) and not is_spring
 			
+			var base_weight: float = 1.0
 			if is_spring:
-				astar.set_point_weight_scale(id_counter, 150.0) # Avoid hot springs
+				base_weight = 150.0 # Avoid hot springs
 			elif is_chasm:
-				astar.set_point_weight_scale(id_counter, 80.0) # Avoid crevasses
-			else:
-				astar.set_point_weight_scale(id_counter, 1.0)
+				base_weight = 80.0 # Avoid crevasses
+				
+			# Natural centerline tracking penalty creates winding tracks that follow the canyon meander
+			var meander_weight: float = 1.0 + (lat_dist / (valley_width_m + 1.0)) * 2.0
+			astar.set_point_weight_scale(id_counter, base_weight * meander_weight)
 				
 			coord_to_id[c] = id_counter
 			id_to_coord[id_counter] = c

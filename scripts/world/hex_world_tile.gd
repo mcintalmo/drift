@@ -21,13 +21,14 @@ func _ready() -> void:
 	if not _static_body:
 		_build_tile_geometry([])
 
-## Initializes the hex tile with corner-shared height blending and Model C geometry
+## Initializes the hex tile with continuous world-space vertex height sampling
 func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring_flag: bool = false) -> void:
 	axial_coord = coord
 	biome_data = biome if biome else SectorBiomeDataClass.new()
 	tile_outer_radius_m = biome_data.get("hex_cell_outer_radius_m") if "hex_cell_outer_radius_m" in biome_data else 6.0
 	is_hot_spring = hot_spring_flag
 	
+	# 3D world center coordinates in X-Z plane
 	var world_x: float = tile_outer_radius_m * SQRT_3 * (float(coord.x) + float(coord.y) * 0.5)
 	var world_z: float = tile_outer_radius_m * 1.5 * float(coord.y)
 	
@@ -36,12 +37,12 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 	var freq: float = biome_data.get("elevation_frequency") if "elevation_frequency" in biome_data else 0.035
 	var amp: float = biome_data.get("elevation_amplitude") if "elevation_amplitude" in biome_data else 2.8
 	noise.frequency = freq
-	base_elevation_m = noise.get_noise_2d(world_x, world_z) * amp
 	
+	base_elevation_m = noise.get_noise_2d(world_x, world_z) * amp
 	position = Vector3(world_x, base_elevation_m, world_z)
 	
 	if is_hot_spring:
-		surface_type = &"slush" # Mineral hot spring pool
+		surface_type = &"slush"
 	else:
 		var surface_roll: float = absf(noise.get_noise_2d(world_x + 500.0, world_z + 500.0))
 		if biome_data.has_method("sample_surface_type"):
@@ -49,56 +50,28 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 		else:
 			surface_type = &"pack"
 	
-	# Compute corner-shared smoothed heights (Model C)
-	var corner_heights: Array[float] = _compute_model_c_corner_heights(noise, amp)
+	# Compute exact continuous corner vertex heights in world space
+	var corner_heights: Array[float] = _compute_continuous_corner_heights(world_x, world_z, noise, amp)
 	
 	_build_tile_geometry(corner_heights)
 	_spawn_procedural_features(seed_val)
 
-## Calculates smoothed corner vertex elevations by averaging the 3 sharing neighbor hexes
-func _compute_model_c_corner_heights(noise: FastNoiseLite, amp: float) -> Array[float]:
+## Evaluates continuous world-space noise height at the 6 exact corner vertex coordinates
+func _compute_continuous_corner_heights(center_x: float, center_z: float, noise: FastNoiseLite, amp: float) -> Array[float]:
 	var corner_heights: Array[float] = []
-	var cliff_thresh: float = biome_data.get("cliff_height_threshold_m") if "cliff_height_threshold_m" in biome_data else 1.8
-	
-	# The 3 neighbor pairs for the 6 corners of axial hex (q, r):
-	var corner_neighbors: Array[Array] = [
-		[Vector2i(axial_coord.x + 1, axial_coord.y - 1), Vector2i(axial_coord.x + 1, axial_coord.y)], # Corner 0 (30 deg)
-		[Vector2i(axial_coord.x + 1, axial_coord.y), Vector2i(axial_coord.x, axial_coord.y + 1)],     # Corner 1 (90 deg)
-		[Vector2i(axial_coord.x, axial_coord.y + 1), Vector2i(axial_coord.x - 1, axial_coord.y + 1)], # Corner 2 (150 deg)
-		[Vector2i(axial_coord.x - 1, axial_coord.y + 1), Vector2i(axial_coord.x - 1, axial_coord.y)], # Corner 3 (210 deg)
-		[Vector2i(axial_coord.x - 1, axial_coord.y), Vector2i(axial_coord.x, axial_coord.y - 1)],     # Corner 4 (270 deg)
-		[Vector2i(axial_coord.x, axial_coord.y - 1), Vector2i(axial_coord.x + 1, axial_coord.y - 1)]  # Corner 5 (330 deg)
-	]
 	
 	for i: int in range(6):
-		var n1_coord: Vector2i = corner_neighbors[i][0]
-		var n2_coord: Vector2i = corner_neighbors[i][1]
+		var angle_rad: float = deg_to_rad(60.0 * float(i) + 30.0)
+		var corner_world_x: float = center_x + (tile_outer_radius_m * cos(angle_rad))
+		var corner_world_z: float = center_z + (tile_outer_radius_m * sin(angle_rad))
 		
-		var n1_pos_x: float = tile_outer_radius_m * SQRT_3 * (float(n1_coord.x) + float(n1_coord.y) * 0.5)
-		var n1_pos_z: float = tile_outer_radius_m * 1.5 * float(n1_coord.y)
-		var h_n1: float = noise.get_noise_2d(n1_pos_x, n1_pos_z) * amp
+		# Sample continuous noise at this exact world-space corner position
+		var corner_world_elevation: float = noise.get_noise_2d(corner_world_x, corner_world_z) * amp
 		
-		var n2_pos_x: float = tile_outer_radius_m * SQRT_3 * (float(n2_coord.x) + float(n2_coord.y) * 0.5)
-		var n2_pos_z: float = tile_outer_radius_m * 1.5 * float(n2_coord.y)
-		var h_n2: float = noise.get_noise_2d(n2_pos_x, n2_pos_z) * amp
+		# Relative Y height offset in this tile's local coordinate space
+		var local_y: float = corner_world_elevation - base_elevation_m
+		corner_heights.append(local_y)
 		
-		var d1: float = absf(base_elevation_m - h_n1)
-		var d2: float = absf(base_elevation_m - h_n2)
-		
-		# If within cliff threshold, average heights to create smooth ramp
-		if d1 <= cliff_thresh and d2 <= cliff_thresh:
-			var shared_h: float = (base_elevation_m + h_n1 + h_n2) / 3.0
-			corner_heights.append(shared_h - base_elevation_m) # Relative to tile origin
-		elif d1 <= cliff_thresh:
-			var shared_h: float = (base_elevation_m + h_n1) / 2.0
-			corner_heights.append(shared_h - base_elevation_m)
-		elif d2 <= cliff_thresh:
-			var shared_h: float = (base_elevation_m + h_n2) / 2.0
-			corner_heights.append(shared_h - base_elevation_m)
-		else:
-			# Steep drop: local slope
-			corner_heights.append(0.0)
-			
 	return corner_heights
 
 func _build_tile_geometry(corner_heights: Array[float]) -> void:
@@ -161,7 +134,7 @@ func _generate_model_c_mesh(radius: float, depth: float, corner_heights: Array[f
 		st.set_normal(face_normal)
 		st.add_vertex(v3)
 	
-	# Side Skirts (Cliff Walls)
+	# Side Skirts (Cliff Walls down to depth)
 	for i: int in range(6):
 		var next_i: int = (i + 1) % 6
 		var t1: Vector3 = top_vertices[i]

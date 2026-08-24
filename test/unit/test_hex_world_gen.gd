@@ -10,7 +10,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_axial_to_world_position_conversion())
 	results.append(_test_hex_ring_cluster_generation())
 	results.append(_test_biome_surface_sampling())
-	results.append(_test_model_c_corner_smoothing())
+	results.append(_test_adjacent_hex_vertex_exact_match())
 	results.append(_test_hot_spring_basin_creation())
 	results.append(_test_sector_manager_streaming_and_pooling())
 	return results
@@ -72,30 +72,47 @@ func _test_biome_surface_sampling() -> Dictionary:
 		]
 	}
 
-func _test_model_c_corner_smoothing() -> Dictionary:
-	var tile: HexWorldTile = HexWorldTile.new()
+func _test_adjacent_hex_vertex_exact_match() -> Dictionary:
 	var biome: SectorBiomeData = SectorBiomeData.new()
 	biome.hex_cell_outer_radius_m = 6.0
-	biome.elevation_amplitude = 3.0
-	biome.cliff_height_threshold_m = 2.0
+	biome.elevation_amplitude = 3.5
 	
-	tile.initialize_tile(Vector2i(0, 0), biome, 1337, false)
+	var tile_a: HexWorldTile = HexWorldTile.new()
+	tile_a.initialize_tile(Vector2i(0, 0), biome, 4281, false)
 	
-	var body: StaticBody3D = tile.get_node_or_null("TileBody") as StaticBody3D
-	var mesh_inst: MeshInstance3D = body.get_node_or_null("TileMesh") as MeshInstance3D if body else null
-	var col_shape: CollisionShape3D = body.get_node_or_null("TileCollision") as CollisionShape3D if body else null
+	var tile_b: HexWorldTile = HexWorldTile.new()
+	tile_b.initialize_tile(Vector2i(1, 0), biome, 4281, false)
 	
-	var has_surface_meta: bool = body and body.has_meta(&"surface_type")
-	var has_mesh: bool = mesh_inst and mesh_inst.mesh != null
-	var has_col: bool = col_shape and col_shape.shape != null
+	# In Pointy-topped grid:
+	# Tile A (0, 0) Corner 0 (30 deg) world position matches Tile B (1, 0) Corner 2 (150 deg) world position!
+	# Tile A (0, 0) Corner 5 (330 deg) world position matches Tile B (1, 0) Corner 3 (210 deg) world position!
+	var noise: FastNoiseLite = FastNoiseLite.new()
+	noise.seed = 4281
+	noise.frequency = biome.elevation_frequency
+	var amp: float = biome.elevation_amplitude
 	
-	var passed: bool = has_surface_meta and has_mesh and has_col
+	var corners_a: Array[float] = tile_a._compute_continuous_corner_heights(tile_a.position.x, tile_a.position.z, noise, amp)
+	var corners_b: Array[float] = tile_b._compute_continuous_corner_heights(tile_b.position.x, tile_b.position.z, noise, amp)
 	
-	tile.free()
+	var world_y_a0: float = tile_a.position.y + corners_a[0]
+	var world_y_b2: float = tile_b.position.y + corners_b[2]
+	
+	var world_y_a5: float = tile_a.position.y + corners_a[5]
+	var world_y_b3: float = tile_b.position.y + corners_b[3]
+	
+	var delta_edge1: float = absf(world_y_a0 - world_y_b2)
+	var delta_edge2: float = absf(world_y_a5 - world_y_b3)
+	
+	var passed: bool = (delta_edge1 < 0.0001) and (delta_edge2 < 0.0001)
+	
+	tile_a.free()
+	tile_b.free()
 	return {
-		"name": "test_model_c_corner_smoothing",
+		"name": "test_adjacent_hex_vertex_exact_match",
 		"passed": passed,
-		"message": "Model C tile mesh generated with smoothed corners and collision shape"
+		"message": "Continuous shared edges: Edge1 diff = %.6f m, Edge2 diff = %.6f m (Zero-Seam Match: %s)" % [
+			delta_edge1, delta_edge2, str(passed)
+		]
 	}
 
 func _test_hot_spring_basin_creation() -> Dictionary:

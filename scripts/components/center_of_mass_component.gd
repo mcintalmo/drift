@@ -13,6 +13,12 @@ signal com_updated(com_offset_3d: Vector3, total_mass_kg: float)
 var current_total_mass_kg: float = 220.0
 var current_com_offset_3d: Vector3 = Vector3(0.0, 0.25, 0.0)
 
+var _mounted_pilot_ref: Node = null
+var _mounted_pilot_backpack: HexInventoryComponent = null
+
+const PILOT_BASE_BODY_MASS_KG: float = 75.0
+const PILOT_COCKPIT_OFFSET_3D: Vector3 = Vector3(0.0, 0.40, 0.15)
+
 func _ready() -> void:
 	if not sled_stats:
 		sled_stats = SledStatsData.new()
@@ -40,10 +46,34 @@ func unregister_container(container: HexInventoryComponent) -> void:
 		container_inventories.erase(container)
 		recalculate_com()
 
+func set_mounted_pilot(pilot: Node) -> void:
+	if _mounted_pilot_backpack and is_instance_valid(_mounted_pilot_backpack):
+		if _mounted_pilot_backpack.inventory_changed.is_connected(_on_container_inventory_changed):
+			_mounted_pilot_backpack.inventory_changed.disconnect(_on_container_inventory_changed)
+	
+	_mounted_pilot_ref = pilot
+	_mounted_pilot_backpack = null
+	
+	if pilot and is_instance_valid(pilot):
+		_mounted_pilot_backpack = pilot.get_node_or_null("BackpackInventoryComponent") as HexInventoryComponent
+		if _mounted_pilot_backpack:
+			if not _mounted_pilot_backpack.inventory_changed.is_connected(_on_container_inventory_changed):
+				_mounted_pilot_backpack.inventory_changed.connect(_on_container_inventory_changed)
+	
+	recalculate_com()
+
+func clear_mounted_pilot() -> void:
+	if _mounted_pilot_backpack and is_instance_valid(_mounted_pilot_backpack):
+		if _mounted_pilot_backpack.inventory_changed.is_connected(_on_container_inventory_changed):
+			_mounted_pilot_backpack.inventory_changed.disconnect(_on_container_inventory_changed)
+	_mounted_pilot_ref = null
+	_mounted_pilot_backpack = null
+	recalculate_com()
+
 func _on_container_inventory_changed(_items: Array[HexItemData]) -> void:
 	recalculate_com()
 
-## Recalculates total mass and composite 3D Center of Mass offset (Paradigm A Vertical Orientation)
+## Recalculates total mass and composite 3D Center of Mass offset (including mounted pilot & backpack)
 func recalculate_com() -> void:
 	var base_mass: float = sled_stats.chassis_base_mass_kg if sled_stats else 220.0
 	var base_com: Vector3 = sled_stats.chassis_com_offset if sled_stats else Vector3(0.0, 0.25, 0.0)
@@ -51,6 +81,7 @@ func recalculate_com() -> void:
 	var total_mass: float = base_mass
 	var weighted_pos_sum: Vector3 = base_com * base_mass
 	
+	# 1. Add Sled Cargo Containers
 	for container: HexInventoryComponent in container_inventories:
 		if not is_instance_valid(container):
 			continue
@@ -61,6 +92,19 @@ func recalculate_com() -> void:
 		var container_com_3d: Vector3 = Vector3(com_2d.x, 0.25 - com_2d.y, 0.0)
 		weighted_pos_sum += container_com_3d * container_mass
 		total_mass += container_mass
+	
+	# 2. Add Mounted Pilot body mass & backpack payload if occupied
+	if _mounted_pilot_ref and is_instance_valid(_mounted_pilot_ref):
+		total_mass += PILOT_BASE_BODY_MASS_KG
+		weighted_pos_sum += PILOT_COCKPIT_OFFSET_3D * PILOT_BASE_BODY_MASS_KG
+		
+		if _mounted_pilot_backpack and is_instance_valid(_mounted_pilot_backpack):
+			var bp_mass: float = _mounted_pilot_backpack.get_total_items_mass()
+			if bp_mass > 0.0:
+				var bp_com_2d: Vector2 = _mounted_pilot_backpack.get_com_offset_2d()
+				var bp_com_3d: Vector3 = Vector3(bp_com_2d.x, 0.45 - bp_com_2d.y, 0.15)
+				weighted_pos_sum += bp_com_3d * bp_mass
+				total_mass += bp_mass
 	
 	current_total_mass_kg = total_mass
 	current_com_offset_3d = weighted_pos_sum / maxf(1.0, total_mass)

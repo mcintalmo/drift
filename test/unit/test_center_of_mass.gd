@@ -6,6 +6,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_empty_container_com())
 	results.append(_test_asymmetrical_item_placement_shifts_com())
 	results.append(_test_center_of_mass_aggregation())
+	results.append(_test_mounted_pilot_impacts_sled_com())
 	return results
 
 func _test_empty_container_com() -> Dictionary:
@@ -74,4 +75,49 @@ func _test_center_of_mass_aggregation() -> Dictionary:
 		"name": "test_center_of_mass_aggregation",
 		"passed": passed,
 		"message": "Aggregated mass = %f kg, COM = %s" % [final_mass, str(final_com)]
+	}
+
+func _test_mounted_pilot_impacts_sled_com() -> Dictionary:
+	var com_comp: CenterOfMassComponent = CenterOfMassComponent.new()
+	com_comp.sled_stats = SledStatsData.new()
+	com_comp.sled_stats.chassis_base_mass_kg = 200.0
+	com_comp.sled_stats.chassis_com_offset = Vector3(0.0, 0.2, 0.0)
+	
+	var pilot: CharacterBody3D = CharacterBody3D.new()
+	var bp: HexInventoryComponent = HexInventoryComponent.new()
+	bp.name = "BackpackInventoryComponent"
+	bp.container_mount = ContainerMountData.new()
+	pilot.add_child(bp)
+	
+	var heavy_item: HexItemData = HexItemData.new()
+	heavy_item.mass_kg = 50.0
+	heavy_item.hex_footprint = [Vector2i(0, 0)]
+	bp.place_item(heavy_item, Vector2i(1, 0)) # 50kg on pilot's right side
+	
+	# Mount pilot into sled
+	com_comp.set_mounted_pilot(pilot)
+	
+	var mounted_mass: float = com_comp.current_total_mass_kg
+	var mounted_com_x: float = com_comp.current_com_offset_3d.x
+	
+	# Expected mass: 200 (chassis) + 75 (pilot body) + 50 (backpack) = 325 kg
+	var mounted_pass: bool = is_equal_approx(mounted_mass, 325.0) and (mounted_com_x > 0.04)
+	
+	# Dismount pilot
+	com_comp.clear_mounted_pilot()
+	var unmounted_mass: float = com_comp.current_total_mass_kg
+	var unmounted_com_x: float = com_comp.current_com_offset_3d.x
+	
+	var unmounted_pass: bool = is_equal_approx(unmounted_mass, 200.0) and is_zero_approx(unmounted_com_x)
+	
+	var passed: bool = mounted_pass and unmounted_pass
+	
+	com_comp.free()
+	pilot.free()
+	return {
+		"name": "test_mounted_pilot_impacts_sled_com",
+		"passed": passed,
+		"message": "Mounted mass = %.1f kg, COM_x = %.3f m -> Dismounted mass = %.1f kg, COM_x = %.3f m" % [
+			mounted_mass, mounted_com_x, unmounted_mass, unmounted_com_x
+		]
 	}

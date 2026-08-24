@@ -117,10 +117,17 @@ is_breach_target = true
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CouplerHurtbox"]
 shape = SubResource("BoxShape3D_coupler_col")
 
-[node name="GrappleAnchorComponent" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, 0)
+[node name="RoofGrappleAnchor" type="Node3D" parent="." groups=["grapple_anchors"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.6, 0)
 script = ExtResource("4_anchor")
 anchor_type = 2
+is_roof_boarding_anchor = true
+
+[node name="CouplerGrappleAnchor" type="Node3D" parent="." groups=["grapple_anchors"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 4.2)
+script = ExtResource("4_anchor")
+anchor_type = 2
+is_roof_boarding_anchor = false
 
 [node name="VaultCrate1" parent="." instance=ExtResource("5_crate")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, -1.5)

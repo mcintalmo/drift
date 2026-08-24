@@ -21,6 +21,14 @@ func physics_update(delta: float) -> void:
 		if grapple.fire_grapple(pilot.global_position + Vector3(0, 1.0, 0), look_dir, pilot.get_world_3d().direct_space_state):
 			transition_requested.emit(&"GrapplingState")
 			return
+			
+	# Remote Sled Winch Detach trigger while on foot
+	if Input.is_action_just_pressed(&"winch_quick"):
+		var sleds: Array[Node] = pilot.get_tree().get_nodes_in_group(&"player_sled") if pilot.is_inside_tree() else []
+		for s_node: Node in sleds:
+			var w_comp: Node = s_node.get_node_or_null("SledWinchComponent")
+			if w_comp and w_comp.get("is_tethered") == true and w_comp.has_method("detach_tether"):
+				w_comp.call("detach_tether")
 	
 	# Check attack / breach trigger
 	if Input.is_action_just_pressed(&"pilot_melee_breach") and weapon_socket:

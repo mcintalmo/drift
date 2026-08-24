@@ -11,6 +11,7 @@ signal tension_updated(current_tension_n: float, max_tension_n: float)
 @export_group("Dependencies")
 @export var winch_data: WinchData
 @export var parent_body: CharacterBody3D
+@export var cable_mesh: MeshInstance3D
 
 @export_group("State")
 @export var is_tethered: bool = false
@@ -26,6 +27,46 @@ func _ready() -> void:
 		winch_data = WinchData.new()
 	if not parent_body and get_parent() is CharacterBody3D:
 		parent_body = get_parent() as CharacterBody3D
+		
+	if not cable_mesh:
+		cable_mesh = MeshInstance3D.new()
+		cable_mesh.name = "WinchCableVisual"
+		var cyl: CylinderMesh = CylinderMesh.new()
+		cyl.top_radius = 0.04
+		cyl.bottom_radius = 0.04
+		cyl.height = 1.0
+		cable_mesh.mesh = cyl
+		
+		var mat: StandardMaterial3D = StandardMaterial3D.new()
+		mat.albedo_color = Color(0.85, 0.88, 0.92, 1.0)
+		mat.metallic = 0.9
+		mat.roughness = 0.2
+		mat.emission_enabled = true
+		mat.emission = Color(0.3, 0.6, 1.0, 1.0)
+		mat.emission_energy_multiplier = 1.2
+		cable_mesh.material_override = mat
+		
+		cable_mesh.visible = false
+		add_child(cable_mesh)
+
+func _process(_delta: float) -> void:
+	if is_tethered and cable_mesh:
+		var start_pos: Vector3 = get_winch_position()
+		var end_pos: Vector3 = _target_anchor.get_global_anchor_position() if (_target_anchor and is_instance_valid(_target_anchor)) else current_target_pos
+		var to_anchor: Vector3 = end_pos - start_pos
+		var dist: float = to_anchor.length()
+		
+		if dist > 0.1:
+			cable_mesh.visible = true
+			cable_mesh.global_position = start_pos + (to_anchor * 0.5)
+			cable_mesh.look_at(end_pos, Vector3.UP)
+			# Rotate CylinderMesh so length aligns with look direction (Z axis)
+			cable_mesh.rotation.x += PI * 0.5
+			cable_mesh.scale = Vector3(0.08, dist, 0.08)
+		else:
+			cable_mesh.visible = false
+	elif cable_mesh:
+		cable_mesh.visible = false
 
 func fire_quick_cone(forward_dir: Vector3) -> bool:
 	if is_tethered:
@@ -33,7 +74,7 @@ func fire_quick_cone(forward_dir: Vector3) -> bool:
 		return false
 	
 	var origin: Vector3 = global_position
-	var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state if is_inside_tree() else null
 	if not space_state:
 		return false
 	
@@ -44,7 +85,7 @@ func fire_quick_cone(forward_dir: Vector3) -> bool:
 	
 	var anchors: Array[Node] = get_tree().get_nodes_in_group(&"grapple_anchors")
 	for node: Node in anchors:
-		if node is GrappleAnchorComponent and node.is_grappleable:
+		if node is GrappleAnchorComponent and node.is_grappleable and is_instance_valid(node):
 			var anchor_pos: Vector3 = node.get_global_anchor_position()
 			var to_anchor: Vector3 = anchor_pos - origin
 			var dist: float = to_anchor.length()
@@ -58,8 +99,8 @@ func fire_quick_cone(forward_dir: Vector3) -> bool:
 					query.exclude = [parent_body.get_rid()] if parent_body else []
 					var result: Dictionary = space_state.intersect_ray(query)
 					
-					# If unobstructed or hit the anchor itself
-					if result.is_empty() or (result.has("collider") and result.collider == node.get_parent()):
+					# If unobstructed or hit the anchor itself / train car body
+					if result.is_empty() or (result.has("collider") and (result.collider == node.get_parent() or result.collider == node)):
 						best_dot = dot
 						best_anchor = node
 	
@@ -91,6 +132,8 @@ func detach_tether() -> void:
 	_target_anchor = null
 	current_tension_force = 0.0
 	_is_reeling_in = false
+	if cable_mesh:
+		cable_mesh.visible = false
 	
 	tether_detached.emit()
 	GlobalEvents.emit_winch_detached()
@@ -100,10 +143,12 @@ func set_reeling(is_reeling: bool) -> void:
 
 ## Computes spring force vector exerted on the sled by the cable
 func compute_tether_force(delta: float, current_velocity: Vector3) -> Vector3:
-	if not is_tethered or not _target_anchor:
+	if not is_tethered:
 		return Vector3.ZERO
-	
-	current_target_pos = _target_anchor.get_global_anchor_position()
+		
+	if _target_anchor and is_instance_valid(_target_anchor):
+		current_target_pos = _target_anchor.get_global_anchor_position()
+		
 	var to_anchor: Vector3 = current_target_pos - get_winch_position()
 	var current_len: float = to_anchor.length()
 	

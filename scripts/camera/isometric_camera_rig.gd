@@ -17,8 +17,9 @@ const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 @export_group("Terrain & Prop See-Through Occlusion")
 @export var is_terrain_see_through_enabled: bool = true
 @export var occluded_transparency_alpha: float = 0.28
-@export var fade_in_speed: float = 12.0
-@export var fade_out_speed: float = 6.0
+@export var anticipatory_fade_distance_m: float = 3.5
+@export var fade_in_speed: float = 8.0
+@export var fade_out_speed: float = 4.5
 
 @export_group("Trauma & Screen Shake")
 @export var trauma_decay_rate: float = 1.4
@@ -30,7 +31,8 @@ const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 
 var _current_trauma: float = 0.0
 var _shake_time: float = 0.0
-# Registry of currently tracked occluder materials: StandardMaterial3D -> float (current_alpha)
+
+# Tracked occluder materials: StandardMaterial3D -> float (target_alpha)
 var _occluded_materials: Dictionary = {}
 
 func _ready() -> void:
@@ -75,69 +77,110 @@ func _physics_process(delta: float) -> void:
 	if is_terrain_see_through_enabled and target_node and camera_3d:
 		_update_terrain_occlusion(delta)
 
-## Casts multi-ray bundle from camera to target and smoothly fades occluding terrain and props
+## Multi-piercing raycasting and anticipatory velocity-cone fading across all cascaded occluders
 func _update_terrain_occlusion(delta: float) -> void:
 	var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	if not space_state:
 		return
 	
 	var cam_pos: Vector3 = camera_3d.global_position
-	var target_pos: Vector3 = target_node.global_position + Vector3(0, 0.6, 0)
-	var cam_to_target_dist: float = cam_pos.distance_to(target_pos)
+	var target_center: Vector3 = target_node.global_position + Vector3(0, 0.6, 0)
+	var cam_to_target_dist: float = cam_pos.distance_to(target_center)
 	
 	if cam_to_target_dist < 1.0:
 		return
 	
-	# Multi-ray sample offsets around the player/sled
-	var sample_offsets: Array[Vector3] = [
-		Vector3.ZERO,
-		Vector3(-0.8, 0, 0),
-		Vector3(0.8, 0, 0),
-		Vector3(0, 0.8, 0)
+	# Target velocity for anticipatory pre-fade
+	var vel_forecast: Vector3 = Vector3.ZERO
+	if target_node is CharacterBody3D:
+		var v: Vector3 = (target_node as CharacterBody3D).velocity
+		if v.length() > 0.2:
+			vel_forecast = v.normalized() * minf(v.length() * 0.45, anticipatory_fade_distance_m)
+	
+	# Sample ray targets: Direct core, lateral bounds, vertical bounds, and velocity anticipatory forecast
+	var ray_targets: Array[Dictionary] = [
+		{"pos": target_center, "weight": 1.0}, # Direct Line of Sight (Full Occlusion)
+		{"pos": target_center + Vector3(-1.2, 0, 0), "weight": 0.85},
+		{"pos": target_center + Vector3(1.2, 0, 0), "weight": 0.85},
+		{"pos": target_center + Vector3(0, 1.2, 0), "weight": 0.85},
+		{"pos": target_center + Vector3(0, -0.4, 0), "weight": 0.85}
 	]
 	
-	var currently_hit_materials: Array[StandardMaterial3D] = []
+	# If moving, add anticipatory approach ray targets
+	if vel_forecast.length_squared() > 0.01:
+		ray_targets.append({"pos": target_center + vel_forecast, "weight": 0.75})
+		ray_targets.append({"pos": target_center + vel_forecast * 0.5, "weight": 0.90})
 	
-	for offset: Vector3 in sample_offsets:
-		var ray_target: Vector3 = target_pos + offset
-		var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(cam_pos, ray_target, 1) # Layer 1 = World Terrain & Props
-		if target_node is CollisionObject3D:
-			query.exclude = [ (target_node as CollisionObject3D).get_rid() ]
+	# Map to aggregate the maximum occlusion weight per material: StandardMaterial3D -> max_weight
+	var active_materials_weight: Dictionary = {}
+	
+	var base_exclude: Array[RID] = []
+	if target_node is CollisionObject3D:
+		base_exclude.append((target_node as CollisionObject3D).get_rid())
+	
+	for entry: Dictionary in ray_targets:
+		var ray_dest: Vector3 = entry["pos"]
+		var ray_weight: float = entry["weight"]
+		var ray_dist: float = cam_pos.distance_to(ray_dest)
 		
-		var result: Dictionary = space_state.intersect_ray(query)
-		if not result.is_empty():
+		# Piercing multi-hit raycast along this ray
+		var exclude_list: Array[RID] = base_exclude.duplicate()
+		
+		for _hit_step in range(8): # Max 8 cascaded terrain/prop colliders along single line of sight
+			var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(cam_pos, ray_dest, 1) # Layer 1 = World Terrain & Props
+			query.exclude = exclude_list
+			
+			var result: Dictionary = space_state.intersect_ray(query)
+			if result.is_empty():
+				break
+				
 			var hit_pos: Vector3 = result.get("position", Vector3.ZERO)
 			var hit_dist: float = cam_pos.distance_to(hit_pos)
 			
-			# If the hit is between camera and target (with margin)
-			if hit_dist < (cam_to_target_dist - 1.2):
+			# If the hit is between camera and target
+			if hit_dist < (ray_dist - 0.8):
 				var collider: Object = result.get("collider")
+				if collider is CollisionObject3D:
+					exclude_list.append((collider as CollisionObject3D).get_rid())
+					
 				if collider is Node:
-					_collect_mesh_materials(collider as Node, currently_hit_materials)
+					var mats: Array[StandardMaterial3D] = []
+					_collect_mesh_materials(collider as Node, mats)
+					for m: StandardMaterial3D in mats:
+						var prev_w: float = active_materials_weight.get(m, 0.0)
+						active_materials_weight[m] = maxf(prev_w, ray_weight)
+			else:
+				break
 	
-	# Register newly occluding materials
-	for mat: StandardMaterial3D in currently_hit_materials:
+	# Register newly discovered materials
+	for mat: StandardMaterial3D in active_materials_weight:
 		if not _occluded_materials.has(mat):
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			_occluded_materials[mat] = mat.albedo_color.a
+			_occluded_materials[mat] = 1.0 # Start from opaque and smoothly fade
 	
-	# Smoothly update alpha for all tracked materials
+	# Smoothly interpolate alpha based on proximity weight and anticipatory approach
 	var to_remove: Array[StandardMaterial3D] = []
 	for mat: StandardMaterial3D in _occluded_materials:
 		if not is_instance_valid(mat):
 			to_remove.append(mat)
 			continue
 			
-		var is_still_occluding: bool = currently_hit_materials.has(mat)
-		var target_alpha: float = occluded_transparency_alpha if is_still_occluding else 1.0
-		var current_a: float = mat.albedo_color.a
-		var speed: float = fade_in_speed if is_still_occluding else fade_out_speed
+		var is_occluding: bool = active_materials_weight.has(mat)
+		var target_alpha: float = 1.0
+		var speed: float = fade_out_speed
 		
+		if is_occluding:
+			var weight: float = active_materials_weight[mat]
+			# Proactive anticipatory fade: higher weight -> deeper transparency
+			target_alpha = lerpf(1.0, occluded_transparency_alpha, weight)
+			speed = fade_in_speed
+			
+		var current_a: float = mat.albedo_color.a
 		var new_a: float = move_toward(current_a, target_alpha, speed * delta)
 		mat.albedo_color.a = new_a
-		_occluded_materials[mat] = new_a
 		
-		if not is_still_occluding and new_a >= 0.99:
+		# If fully restored back to 1.0, cleanly disable alpha transparency
+		if not is_occluding and new_a >= 0.99:
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 			mat.albedo_color.a = 1.0
 			to_remove.append(mat)
@@ -146,7 +189,6 @@ func _update_terrain_occlusion(delta: float) -> void:
 		_occluded_materials.erase(mat)
 
 func _collect_mesh_materials(node: Node, out_materials: Array[StandardMaterial3D]) -> void:
-	# Check node and its direct children / parents for MeshInstance3D
 	var mesh_instances: Array[MeshInstance3D] = []
 	if node is MeshInstance3D:
 		mesh_instances.append(node as MeshInstance3D)
@@ -179,7 +221,6 @@ func _update_screen_shake(delta: float) -> void:
 	_current_trauma = maxf(0.0, _current_trauma - trauma_decay_rate * delta)
 	_shake_time += delta * 30.0
 	
-	# Trauma-squared calculation (Shake = Trauma^2)
 	var shake_power: float = _current_trauma * _current_trauma
 	var offset_x: float = sin(_shake_time * 1.3) * max_shake_offset_meters * shake_power
 	var offset_y: float = cos(_shake_time * 1.7) * max_shake_offset_meters * shake_power

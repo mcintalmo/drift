@@ -24,7 +24,7 @@ func _ready() -> void:
 	if not _static_body:
 		_build_tile_geometry([])
 
-## Initializes the hex tile with smooth rideable hills, discrete plateau tiers, and 90-degree straight vertical cliffs
+## Initializes the hex tile with balanced rolling snowdrifts, 1 grand hill plateau, and 1 sunken glacial chasm/frozen lake
 func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring_flag: bool = false) -> void:
 	axial_coord = coord
 	biome_data = biome if biome else SectorBiomeDataClass.new()
@@ -35,36 +35,37 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 	var world_x: float = tile_outer_radius_m * SQRT_3 * (float(coord.x) + float(coord.y) * 0.5)
 	var world_z: float = tile_outer_radius_m * 1.5 * float(coord.y)
 	
-	# 1. Gentle continuous rolling base elevation (creates smooth rolling hills)
+	# 1. Balanced rolling base elevation noise (between flat and hyper-bumpy: rich snowdrifts & carving knolls)
 	var base_noise: FastNoiseLite = FastNoiseLite.new()
 	base_noise.seed = seed_val
-	var freq: float = biome_data.get("elevation_frequency") if "elevation_frequency" in biome_data else 0.012
-	var amp: float = biome_data.get("elevation_amplitude") if "elevation_amplitude" in biome_data else 1.2
+	var freq: float = biome_data.get("elevation_frequency") if "elevation_frequency" in biome_data else 0.022
+	var amp: float = biome_data.get("elevation_amplitude") if "elevation_amplitude" in biome_data else 1.85
 	base_noise.frequency = freq
 	base_elevation_m = base_noise.get_noise_2d(world_x, world_z) * amp
 	
-	# 2. Discrete Macro Plateau / Chasm Tiers (Forms 100% straight vertical cliffs)
+	# 2. Discrete Macro Plateau / Chasm Tiers (Guarantees 1 Grand Hill Plateau and 1 Frozen Lake Chasm)
 	var plateau_noise: FastNoiseLite = FastNoiseLite.new()
 	plateau_noise.seed = seed_val + 7771
-	plateau_noise.frequency = 0.008
+	plateau_noise.frequency = 0.012
 	var p_val: float = plateau_noise.get_noise_2d(world_x, world_z)
-	var p_thresh: float = biome_data.get("plateau_threshold") if "plateau_threshold" in biome_data else 0.28
-	var tier_h: float = biome_data.get("plateau_tier_height_m") if "plateau_tier_height_m" in biome_data else 3.5
+	var p_thresh: float = biome_data.get("plateau_threshold") if "plateau_threshold" in biome_data else 0.30
+	var c_thresh: float = biome_data.get("chasm_threshold") if "chasm_threshold" in biome_data else -0.32
+	var tier_h: float = biome_data.get("plateau_tier_height_m") if "plateau_tier_height_m" in biome_data else 3.8
 	
 	var macro_tier_offset: float = 0.0
 	if p_val > p_thresh:
 		is_plateau_cliff = true
-		macro_tier_offset = tier_h # Elevated plateau tier with straight vertical cliff walls
-	elif p_val < -0.38 and not is_hot_spring:
+		macro_tier_offset = tier_h # Elevated Grand Hill Plateau (+3.8m)
+	elif p_val < c_thresh and not is_hot_spring:
 		is_glacial_chasm = true
-		macro_tier_offset = -6.5 # Sunken glacial gorge with straight vertical chasm walls
+		macro_tier_offset = -6.5 # Sunken Glacial Crevasse / Frozen Lake (-6.5m)
 		
 	position = Vector3(world_x, base_elevation_m + macro_tier_offset, world_z)
 	
 	if is_hot_spring:
 		surface_type = &"slush"
 	elif is_glacial_chasm:
-		surface_type = &"black_ice"
+		surface_type = &"black_ice" # Glassy mirror black ice on the sunken lake
 	else:
 		var surface_roll: float = absf(base_noise.get_noise_2d(world_x + 500.0, world_z + 500.0))
 		if biome_data.has_method("sample_surface_type"):
@@ -72,7 +73,7 @@ func initialize_tile(coord: Vector2i, biome: Resource, seed_val: int, hot_spring
 		else:
 			surface_type = &"pack"
 	
-	# Corner heights only sample continuous rolling hill noise (keeps tile surface smooth and clean)
+	# Sample continuous rolling hill noise for corner vertices
 	_cached_corner_heights = _compute_continuous_corner_heights(world_x, world_z, base_noise, amp)
 	
 	_build_tile_geometry(_cached_corner_heights)
@@ -107,7 +108,8 @@ func _build_tile_geometry(corner_heights: Array[float]) -> void:
 	_static_body.set_meta(&"surface_type", surface_type)
 	add_child(_static_body)
 	
-	var depth: float = 9.0 if (is_glacial_chasm or is_plateau_cliff) else 5.0
+	# Deep 16.0m side skirts guarantee cliff walls go all the way down into sunken lake basins with ZERO gaps
+	var depth: float = 16.0
 	var hex_mesh: ArrayMesh = _generate_model_c_mesh(tile_outer_radius_m, depth, corner_heights)
 	
 	_mesh_instance = MeshInstance3D.new()
@@ -135,7 +137,7 @@ func _generate_model_c_mesh(radius: float, depth: float, corner_heights: Array[f
 		var vz: float = radius * sin(angle_rad)
 		var vy: float = corner_heights[i] if i < corner_heights.size() else 0.0
 		top_vertices.append(Vector3(vx, vy, vz))
-		# Bottom vertices are straight down vertically at identical X/Z coordinates
+		# Bottom vertices extend straight down vertically deep into the bedrock (no gaps)
 		bottom_vertices.append(Vector3(vx, -depth, vz))
 	
 	# Center Vertex: shallow basin if hot spring (-0.9m), level if normal terrain
@@ -158,7 +160,7 @@ func _generate_model_c_mesh(radius: float, depth: float, corner_heights: Array[f
 		st.set_normal(face_normal)
 		st.add_vertex(v3)
 	
-	# Side Skirts (100% straight vertical 90-degree cliff walls dropping down to depth)
+	# Side Skirts (100% straight vertical 90-degree cliff walls dropping 16m deep)
 	for i: int in range(6):
 		var next_i: int = (i + 1) % 6
 		var t1: Vector3 = top_vertices[i]
@@ -191,20 +193,20 @@ func _create_surface_material(surface: StringName) -> StandardMaterial3D:
 		mat.roughness = 0.95
 		return mat
 	elif is_glacial_chasm:
-		mat.albedo_color = Color(0.18, 0.28, 0.38, 1.0) # Deep glacial chasm basalt
-		mat.roughness = 0.4
-		mat.metallic = 0.3
+		mat.albedo_color = Color(0.12, 0.45, 0.70, 0.92) # Glassy turquoise frozen lake ice
+		mat.roughness = 0.04
+		mat.metallic = 0.65
 		return mat
 	elif is_plateau_cliff:
-		mat.albedo_color = Color(0.82, 0.88, 0.94, 1.0) # Low-poly snow plateau with exposed rock
-		mat.roughness = 0.6
+		mat.albedo_color = Color(0.85, 0.90, 0.96, 1.0) # Grand snow plateau top
+		mat.roughness = 0.65
 		return mat
 		
 	match surface:
 		&"black_ice", &"ice":
-			mat.albedo_color = Color(0.35, 0.65, 0.85, 0.95)
-			mat.roughness = 0.05
-			mat.metallic = 0.4
+			mat.albedo_color = Color(0.20, 0.55, 0.80, 0.95)
+			mat.roughness = 0.04
+			mat.metallic = 0.6
 		&"firn":
 			mat.albedo_color = Color(0.75, 0.88, 0.98, 1.0)
 			mat.roughness = 0.25

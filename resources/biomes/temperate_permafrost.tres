@@ -11,10 +11,11 @@ base_ambient_temp_c = -14.0
 min_storm_temp_c = -36.0
 blizzard_frequency = 0.3
 base_smog_index = 0.05
-elevation_amplitude = 1.2
-elevation_frequency = 0.012
-plateau_tier_height_m = 3.5
-plateau_threshold = 0.28
+elevation_amplitude = 1.85
+elevation_frequency = 0.022
+plateau_tier_height_m = 3.8
+plateau_threshold = 0.30
+chasm_threshold = -0.32
 hex_cell_outer_radius_m = 6.0
 surface_weights = {
 &"pack": 0.50,

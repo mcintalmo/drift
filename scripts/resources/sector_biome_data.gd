@@ -14,10 +14,11 @@ extends Resource
 
 @export_group("Terrain & Elevation Tuning")
 @export var hex_cell_outer_radius_m: float = 6.0
-@export var elevation_amplitude: float = 1.2 # Gentle smooth rolling terrain
-@export var elevation_frequency: float = 0.012 # Low frequency for broad smooth fields
-@export var plateau_tier_height_m: float = 3.5 # Height of macro cliff plateaus
-@export var plateau_threshold: float = 0.28 # Frequency of macro cliff ridges across sector
+@export var elevation_amplitude: float = 1.85 # Balanced rolling snow drifts & mogul hills
+@export var elevation_frequency: float = 0.022 # Balanced undulating frequency
+@export var plateau_tier_height_m: float = 3.8 # Height of grand hill plateau
+@export var plateau_threshold: float = 0.30 # Distinct grand hill plateau cluster
+@export var chasm_threshold: float = -0.32 # Distinct sunken glacial chasm / frozen lake cluster
 
 @export_group("Surface Distribution Weights")
 @export var surface_weights: Dictionary = {

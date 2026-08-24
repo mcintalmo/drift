@@ -61,6 +61,7 @@ func _physics_process(delta: float) -> void:
 	# 1. Preparation Delay in Entrance Cave
 	if delay_timer > 0.0:
 		delay_timer -= delta
+		_update_car_positions(delta) # Keep all cars correctly positioned during delay
 		if delay_timer <= 0.0:
 			has_started = true
 			train_started_moving.emit()
@@ -81,9 +82,21 @@ func _physics_process(delta: float) -> void:
 		train_escaped_into_exit_tunnel.emit()
 
 func _update_car_positions(_delta: float) -> void:
-	if not curve_3d:
+	if not curve_3d or total_track_length_m <= 0.0:
 		return
 		
+	var start_pt: Vector3 = curve_3d.sample_baked(0.0)
+	var next_start_pt: Vector3 = curve_3d.sample_baked(minf(0.6, total_track_length_m))
+	var start_dir: Vector3 = (next_start_pt - start_pt).normalized()
+	if start_dir.length_squared() < 0.01:
+		start_dir = Vector3(0, 0, 1)
+		
+	var end_pt: Vector3 = curve_3d.sample_baked(total_track_length_m)
+	var prev_end_pt: Vector3 = curve_3d.sample_baked(maxf(0.0, total_track_length_m - 0.6))
+	var end_dir: Vector3 = (end_pt - prev_end_pt).normalized()
+	if end_dir.length_squared() < 0.01:
+		end_dir = Vector3(0, 0, 1)
+
 	for i: int in range(train_cars.size()):
 		var car: TrainCar = train_cars[i]
 		if not is_instance_valid(car):
@@ -95,27 +108,40 @@ func _update_car_positions(_delta: float) -> void:
 			car.distance_along_track = target_s
 			car.set_train_speed(current_speed_ms)
 		else:
-			# Decoupled car progresses by its own coasting distance
 			target_s = car.distance_along_track
 			
-		if target_s >= 0.0:
-			var clamped_s: float = clampf(target_s, 0.0, total_track_length_m)
-			var pos_3d: Vector3 = curve_3d.sample_baked(clamped_s)
-			var next_s: float = clampf(clamped_s + 0.6, 0.0, total_track_length_m)
+		var pos_3d: Vector3 = Vector3.ZERO
+		var dir_3d: Vector3 = Vector3.FORWARD
+		
+		if target_s < 0.0:
+			# Positioned backwards along tangent inside the entrance cave
+			pos_3d = start_pt + (start_dir * target_s)
+			dir_3d = start_dir
+			car.visible = (target_s >= -3.5) # Emerge smoothly from cavern mouth
+		elif target_s > total_track_length_m:
+			# Positioned forward along tangent inside the exit tunnel
+			var over_s: float = target_s - total_track_length_m
+			pos_3d = end_pt + (end_dir * over_s)
+			dir_3d = end_dir
+			car.visible = (over_s <= 3.5) # Disappear smoothly into exit tunnel
+		else:
+			# Along 3D Curve Spline on track
+			pos_3d = curve_3d.sample_baked(target_s)
+			var next_s: float = minf(target_s + 0.6, total_track_length_m)
 			var next_pos: Vector3 = curve_3d.sample_baked(next_s)
-			
-			var dir_3d: Vector3 = (next_pos - pos_3d).normalized()
+			dir_3d = (next_pos - pos_3d).normalized()
 			if dir_3d.length_squared() < 0.01:
-				dir_3d = Vector3(0, 0, -1)
-				
-			var rot_y: float = atan2(dir_3d.x, dir_3d.z)
-			var pitch_x: float = -asin(clampf(dir_3d.y, -0.9, 0.9))
+				dir_3d = start_dir
+			car.visible = true
 			
-			if car.is_inside_tree():
-				car.global_position = pos_3d
-			else:
-				car.position = pos_3d
-			car.rotation = Vector3(pitch_x, rot_y, 0.0)
+		var rot_y: float = atan2(dir_3d.x, dir_3d.z)
+		var pitch_x: float = -asin(clampf(dir_3d.y, -0.9, 0.9))
+		
+		if car.is_inside_tree():
+			car.global_position = pos_3d
+		else:
+			car.position = pos_3d
+		car.rotation = Vector3(pitch_x, rot_y, 0.0)
 
 ## Returns estimated time remaining in seconds until the train enters the exit tunnel
 func get_time_until_extraction_seconds() -> float:

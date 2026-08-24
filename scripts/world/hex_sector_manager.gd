@@ -209,6 +209,22 @@ func get_asymmetric_isometric_cluster(center_world: Vector3, center_coord: Vecto
 				
 	return results
 
+## Exact continuous elevation height lookup matching HexWorldTile terrain calculation
+func sample_terrain_surface_y(world_x: float, world_z: float) -> float:
+	var base_noise: FastNoiseLite = FastNoiseLite.new()
+	base_noise.seed = world_seed
+	base_noise.frequency = biome_data.get("elevation_frequency") if "elevation_frequency" in biome_data else 0.022
+	var amp: float = biome_data.get("elevation_amplitude") if "elevation_amplitude" in biome_data else 1.85
+	
+	var hill_noise: FastNoiseLite = FastNoiseLite.new()
+	hill_noise.seed = world_seed + 7771
+	hill_noise.frequency = 0.009
+	var hill_amp: float = biome_data.get("plateau_tier_height_m") if "plateau_tier_height_m" in biome_data else 3.8
+	
+	var rolling_h: float = base_noise.get_noise_2d(world_x, world_z) * amp
+	var hill_h: float = maxf(0.0, hill_noise.get_noise_2d(world_x, world_z) * hill_amp * 1.8)
+	return rolling_h + hill_h
+
 func _pre_evaluate_chasm_map(coords: Array[Vector2i]) -> void:
 	var hill_noise: FastNoiseLite = FastNoiseLite.new()
 	hill_noise.seed = world_seed + 7771
@@ -252,41 +268,49 @@ func _spawn_tile_at(coord: Vector2i) -> void:
 		
 	tile_spawned.emit(coord, tile)
 
+## Spawns multi-chord ground-conforming 3D rail pieces strictly on top of the undulating rolling terrain
 func _spawn_streamed_rail_segment_at(coord: Vector2i, tile: Node3D) -> void:
 	var seg_info: Dictionary = _macro_rail_segments[coord]
 	var next_coord: Vector2i = seg_info.get("next", coord)
 	if next_coord == coord:
 		return
 		
-	var from_pos: Vector3 = axial_to_world_pos(coord)
-	var to_pos: Vector3 = axial_to_world_pos(next_coord)
+	var from_world_2d: Vector3 = axial_to_world_pos(coord)
+	var to_world_2d: Vector3 = axial_to_world_pos(next_coord)
 	
-	# Sample continuous terrain height at start and end nodes
-	var noise: FastNoiseLite = FastNoiseLite.new()
-	noise.seed = world_seed
-	noise.frequency = biome_data.elevation_frequency if "elevation_frequency" in biome_data else 0.022
-	var amp: float = biome_data.elevation_amplitude if "elevation_amplitude" in biome_data else 1.85
+	var multi_segment_root: Node3D = Node3D.new()
+	multi_segment_root.name = "RailSegmentGroup_%d_%d" % [coord.x, coord.y]
 	
-	var hill_noise: FastNoiseLite = FastNoiseLite.new()
-	hill_noise.seed = world_seed + 7771
-	hill_noise.frequency = 0.009
-	var hill_amp: float = 3.8
+	# Subdivide into 4 multi-chord sub-segments so tracks hug convex hill crests and concave valleys perfectly
+	var sub_steps: int = 4
+	for s: int in range(sub_steps):
+		var t1: float = float(s) / float(sub_steps)
+		var t2: float = float(s + 1) / float(sub_steps)
+		
+		var p1: Vector3 = from_world_2d.lerp(to_world_2d, t1)
+		var p2: Vector3 = from_world_2d.lerp(to_world_2d, t2)
+		
+		# Sample continuous terrain height at each sub-vertex (+0.14m above ground)
+		p1.y = sample_terrain_surface_y(p1.x, p1.z) + 0.14
+		p2.y = sample_terrain_surface_y(p2.x, p2.z) + 0.14
+		
+		var sub_node: Node3D = _build_rail_sub_piece_3d(p1, p2)
+		multi_segment_root.add_child(sub_node)
 	
-	from_pos.y = noise.get_noise_2d(from_pos.x, from_pos.z) * amp + hill_noise.get_noise_2d(from_pos.x, from_pos.z) * hill_amp
-	to_pos.y = noise.get_noise_2d(to_pos.x, to_pos.z) * amp + hill_noise.get_noise_2d(to_pos.x, to_pos.z) * hill_amp
-	
-	var rail_node: Node3D = _build_rail_segment_3d(from_pos, to_pos)
 	if _rails_container:
-		_rails_container.add_child(rail_node)
+		_rails_container.add_child(multi_segment_root)
 	else:
-		tile.add_child(rail_node)
-	_active_rail_segments[coord] = rail_node
+		tile.add_child(multi_segment_root)
+	_active_rail_segments[coord] = multi_segment_root
 	
 	# Check if this segment carries an abandoned loot freight car
 	if seg_info.get("has_car", false):
-		var dir_3d: Vector3 = (to_pos - from_pos).normalized()
-		var mid_pos: Vector3 = (from_pos + to_pos) * 0.5
-		var car_node: Node3D = _spawn_abandoned_train_car(mid_pos, dir_3d)
+		var mid_2d: Vector3 = (from_world_2d + to_world_2d) * 0.5
+		var dir_3d: Vector3 = (to_world_2d - from_world_2d).normalized()
+		var car_pos: Vector3 = mid_2d
+		car_pos.y = sample_terrain_surface_y(mid_2d.x, mid_2d.z) + 1.25
+		
+		var car_node: Node3D = _spawn_abandoned_train_car(car_pos, dir_3d)
 		if _rails_container:
 			_rails_container.add_child(car_node)
 		else:
@@ -393,57 +417,55 @@ func _plan_macro_railroad_corridor(start: Vector2i, end: Vector2i) -> void:
 		
 	railroad_generated.emit(_macro_railroad_path.size())
 
-func _build_rail_segment_3d(from_pos: Vector3, to_pos: Vector3) -> Node3D:
+func _build_rail_sub_piece_3d(from_pos: Vector3, to_pos: Vector3) -> Node3D:
 	var segment: Node3D = Node3D.new()
-	segment.name = "RailSegment"
+	segment.name = "RailSubPiece"
 	
-	var mid_pos: Vector3 = (from_pos + to_pos) * 0.5 + Vector3(0, 0.08, 0)
+	var mid_pos: Vector3 = (from_pos + to_pos) * 0.5
 	var dir_3d: Vector3 = (to_pos - from_pos).normalized()
-	var track_len: float = from_pos.distance_to(to_pos) * 1.02
+	var track_len: float = from_pos.distance_to(to_pos) * 1.04
 	
 	segment.position = mid_pos
 	var rot_y: float = atan2(dir_3d.x, dir_3d.z)
 	var pitch_x: float = -asin(clampf(dir_3d.y, -0.9, 0.9))
 	segment.rotation = Vector3(pitch_x, rot_y, 0)
 	
-	# Gravel Ballast Bed
+	# Gravel Ballast Bed (Embeds -0.22m into snow surface to avoid any gaps under rails)
 	var ballast: MeshInstance3D = MeshInstance3D.new()
 	var ballast_box: BoxMesh = BoxMesh.new()
-	ballast_box.size = Vector3(2.6, 0.12, track_len)
+	ballast_box.size = Vector3(2.5, 0.28, track_len)
 	ballast.mesh = ballast_box
+	ballast.position = Vector3(0, -0.06, 0)
 	var ballast_mat: StandardMaterial3D = StandardMaterial3D.new()
 	ballast_mat.albedo_color = Color(0.35, 0.33, 0.32, 1.0)
 	ballast_mat.roughness = 0.95
 	ballast.material_override = ballast_mat
 	segment.add_child(ballast)
 	
-	# Wood Ties
-	var tie_count: int = 5
-	for t: int in range(tie_count):
-		var tie_z: float = -track_len * 0.5 + (float(t) + 0.5) * (track_len / float(tie_count))
-		var tie: MeshInstance3D = MeshInstance3D.new()
-		var tie_box: BoxMesh = BoxMesh.new()
-		tie_box.size = Vector3(2.2, 0.10, 0.28)
-		tie.mesh = tie_box
-		tie.position = Vector3(0, 0.06, tie_z)
-		var tie_mat: StandardMaterial3D = StandardMaterial3D.new()
-		tie_mat.albedo_color = Color(0.28, 0.22, 0.18, 1.0)
-		tie_mat.roughness = 0.9
-		tie.material_override = tie_mat
-		segment.add_child(tie)
+	# Wood Ties (Ties along this sub-piece)
+	var tie: MeshInstance3D = MeshInstance3D.new()
+	var tie_box: BoxMesh = BoxMesh.new()
+	tie_box.size = Vector3(2.2, 0.12, 0.32)
+	tie.mesh = tie_box
+	tie.position = Vector3(0, 0.08, 0)
+	var tie_mat: StandardMaterial3D = StandardMaterial3D.new()
+	tie_mat.albedo_color = Color(0.28, 0.22, 0.18, 1.0)
+	tie_mat.roughness = 0.9
+	tie.material_override = tie_mat
+	segment.add_child(tie)
 	
-	# Steel Rails (Pair)
+	# Steel Rails (Pair sitting firmly on top of ties)
 	var steel_mat: StandardMaterial3D = StandardMaterial3D.new()
-	steel_mat.albedo_color = Color(0.65, 0.68, 0.72, 1.0)
-	steel_mat.metallic = 0.8
+	steel_mat.albedo_color = Color(0.70, 0.72, 0.76, 1.0)
+	steel_mat.metallic = 0.85
 	steel_mat.roughness = 0.25
 	
 	for rail_x: float in [-0.75, 0.75]:
 		var rail: MeshInstance3D = MeshInstance3D.new()
 		var rail_box: BoxMesh = BoxMesh.new()
-		rail_box.size = Vector3(0.10, 0.16, track_len)
+		rail_box.size = Vector3(0.12, 0.18, track_len)
 		rail.mesh = rail_box
-		rail.position = Vector3(rail_x, 0.14, 0)
+		rail.position = Vector3(rail_x, 0.18, 0)
 		rail.material_override = steel_mat
 		segment.add_child(rail)
 	
@@ -452,7 +474,7 @@ func _build_rail_segment_3d(from_pos: Vector3, to_pos: Vector3) -> Node3D:
 func _spawn_abandoned_train_car(pos: Vector3, forward_dir: Vector3) -> Node3D:
 	var car: StaticBody3D = StaticBody3D.new()
 	car.name = "AbandonedRailCar"
-	car.position = pos + Vector3(0, 1.4, 0)
+	car.position = pos
 	
 	var rot_y: float = atan2(forward_dir.x, forward_dir.z)
 	var pitch_x: float = -asin(clampf(forward_dir.y, -0.9, 0.9))

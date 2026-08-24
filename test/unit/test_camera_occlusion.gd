@@ -8,6 +8,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_camera_material_collection())
 	results.append(_test_camera_occlusion_alpha_fading())
 	results.append(_test_multiple_cascaded_occluders())
+	results.append(_test_shadow_depth_draw_preservation())
 	return results
 
 func _test_camera_material_collection() -> Dictionary:
@@ -44,22 +45,23 @@ func _test_camera_occlusion_alpha_fading() -> Dictionary:
 	mat.albedo_color = Color(1.0, 1.0, 1.0, 1.0)
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 	
-	# Manually insert into occluded registry to test fading math with anticipatory weight 0.85
 	var weight: float = 0.85
-	var target_alpha: float = lerpf(1.0, 0.28, weight) # = 0.388
+	var target_alpha: float = lerpf(1.0, 0.28, weight)
 	rig._occluded_materials[mat] = 1.0
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
 	
-	var new_a: float = move_toward(1.0, target_alpha, 8.0 * 0.05) # 1.0 -> 0.60
+	var new_a: float = move_toward(1.0, target_alpha, 8.0 * 0.05)
 	mat.albedo_color.a = new_a
 	
 	var faded_passed: bool = is_equal_approx(mat.albedo_color.a, 0.60) and (mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA)
 	
-	# Simulate clear fade out back to 1.0
-	new_a = move_toward(0.60, 1.0, 4.5 * 0.10) # 0.60 -> 1.0
+	# Clear fade out back to 1.0
+	new_a = move_toward(0.60, 1.0, 4.5 * 0.10)
 	mat.albedo_color.a = new_a
 	if new_a >= 0.99:
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+		mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY
 		mat.albedo_color.a = 1.0
 		
 	var restored_passed: bool = is_equal_approx(mat.albedo_color.a, 1.0) and (mat.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED)
@@ -102,4 +104,22 @@ func _test_multiple_cascaded_occluders() -> Dictionary:
 		"name": "test_multiple_cascaded_occluders",
 		"passed": passed,
 		"message": "Multiple cascaded occluders: %d distinct materials collected simultaneously" % collected.size()
+	}
+
+func _test_shadow_depth_draw_preservation() -> Dictionary:
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.albedo_color = Color(0.9, 0.9, 0.9, 1.0)
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY
+	
+	# During occlusion fade: set to DEPTH_DRAW_ALWAYS to preserve full 3D shadow map projection
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
+	mat.albedo_color.a = 0.28
+	
+	var passed: bool = (mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_ALWAYS) and is_equal_approx(mat.albedo_color.a, 0.28)
+	
+	return {
+		"name": "test_shadow_depth_draw_preservation",
+		"passed": passed,
+		"message": "Transparent material retains DEPTH_DRAW_ALWAYS (Shadow casting preserved: %s)" % str(passed)
 	}

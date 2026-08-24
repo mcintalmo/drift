@@ -169,8 +169,8 @@ func _build_tile_geometry(corner_heights: Array[float]) -> void:
 		_static_body.set_meta(&"is_void_killzone", true)
 	add_child(_static_body)
 	
-	# Deep 18.0m side skirts guarantee cliff walls go all the way down with ZERO gaps
-	var depth: float = 18.0
+	# Massive 90.0m side skirts for boundary walls and 36.0m for general tiles guarantee ZERO gaps into deep chasms
+	var depth: float = 90.0 if is_boundary_wall else 36.0
 	var hex_mesh: ArrayMesh = _generate_model_c_mesh(tile_outer_radius_m, depth, corner_heights)
 	
 	_mesh_instance = MeshInstance3D.new()

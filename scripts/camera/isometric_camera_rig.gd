@@ -14,6 +14,12 @@ const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 @export var max_velocity_lead_meters: float = 8.5
 @export var velocity_lead_factor: float = 0.28
 
+@export_group("Terrain & Prop See-Through Occlusion")
+@export var is_terrain_see_through_enabled: bool = true
+@export var occluded_transparency_alpha: float = 0.28
+@export var fade_in_speed: float = 12.0
+@export var fade_out_speed: float = 6.0
+
 @export_group("Trauma & Screen Shake")
 @export var trauma_decay_rate: float = 1.4
 @export var max_shake_offset_meters: float = 0.85
@@ -24,6 +30,8 @@ const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 
 var _current_trauma: float = 0.0
 var _shake_time: float = 0.0
+# Registry of currently tracked occluder materials: StandardMaterial3D -> float (current_alpha)
+var _occluded_materials: Dictionary = {}
 
 func _ready() -> void:
 	_apply_isometric_rotation()
@@ -62,6 +70,101 @@ func _process(delta: float) -> void:
 	
 	# 2. Update Trauma & Screen Shake
 	_update_screen_shake(delta)
+
+func _physics_process(delta: float) -> void:
+	if is_terrain_see_through_enabled and target_node and camera_3d:
+		_update_terrain_occlusion(delta)
+
+## Casts multi-ray bundle from camera to target and smoothly fades occluding terrain and props
+func _update_terrain_occlusion(delta: float) -> void:
+	var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	if not space_state:
+		return
+	
+	var cam_pos: Vector3 = camera_3d.global_position
+	var target_pos: Vector3 = target_node.global_position + Vector3(0, 0.6, 0)
+	var cam_to_target_dist: float = cam_pos.distance_to(target_pos)
+	
+	if cam_to_target_dist < 1.0:
+		return
+	
+	# Multi-ray sample offsets around the player/sled
+	var sample_offsets: Array[Vector3] = [
+		Vector3.ZERO,
+		Vector3(-0.8, 0, 0),
+		Vector3(0.8, 0, 0),
+		Vector3(0, 0.8, 0)
+	]
+	
+	var currently_hit_materials: Array[StandardMaterial3D] = []
+	
+	for offset: Vector3 in sample_offsets:
+		var ray_target: Vector3 = target_pos + offset
+		var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(cam_pos, ray_target, 1) # Layer 1 = World Terrain & Props
+		if target_node is CollisionObject3D:
+			query.exclude = [ (target_node as CollisionObject3D).get_rid() ]
+		
+		var result: Dictionary = space_state.intersect_ray(query)
+		if not result.is_empty():
+			var hit_pos: Vector3 = result.get("position", Vector3.ZERO)
+			var hit_dist: float = cam_pos.distance_to(hit_pos)
+			
+			# If the hit is between camera and target (with margin)
+			if hit_dist < (cam_to_target_dist - 1.2):
+				var collider: Object = result.get("collider")
+				if collider is Node:
+					_collect_mesh_materials(collider as Node, currently_hit_materials)
+	
+	# Register newly occluding materials
+	for mat: StandardMaterial3D in currently_hit_materials:
+		if not _occluded_materials.has(mat):
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			_occluded_materials[mat] = mat.albedo_color.a
+	
+	# Smoothly update alpha for all tracked materials
+	var to_remove: Array[StandardMaterial3D] = []
+	for mat: StandardMaterial3D in _occluded_materials:
+		if not is_instance_valid(mat):
+			to_remove.append(mat)
+			continue
+			
+		var is_still_occluding: bool = currently_hit_materials.has(mat)
+		var target_alpha: float = occluded_transparency_alpha if is_still_occluding else 1.0
+		var current_a: float = mat.albedo_color.a
+		var speed: float = fade_in_speed if is_still_occluding else fade_out_speed
+		
+		var new_a: float = move_toward(current_a, target_alpha, speed * delta)
+		mat.albedo_color.a = new_a
+		_occluded_materials[mat] = new_a
+		
+		if not is_still_occluding and new_a >= 0.99:
+			mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+			mat.albedo_color.a = 1.0
+			to_remove.append(mat)
+			
+	for mat: StandardMaterial3D in to_remove:
+		_occluded_materials.erase(mat)
+
+func _collect_mesh_materials(node: Node, out_materials: Array[StandardMaterial3D]) -> void:
+	# Check node and its direct children / parents for MeshInstance3D
+	var mesh_instances: Array[MeshInstance3D] = []
+	if node is MeshInstance3D:
+		mesh_instances.append(node as MeshInstance3D)
+	else:
+		for child in node.get_children():
+			if child is MeshInstance3D:
+				mesh_instances.append(child as MeshInstance3D)
+		if node.get_parent() is Node3D:
+			for sibling in node.get_parent().get_children():
+				if sibling is MeshInstance3D:
+					mesh_instances.append(sibling as MeshInstance3D)
+	
+	for mi: MeshInstance3D in mesh_instances:
+		var mat: Material = mi.material_override
+		if not mat and mi.mesh:
+			mat = mi.mesh.surface_get_material(0)
+		if mat is StandardMaterial3D and not out_materials.has(mat as StandardMaterial3D):
+			out_materials.append(mat as StandardMaterial3D)
 
 func add_trauma(amount: float) -> void:
 	_current_trauma = clampf(_current_trauma + amount, 0.0, 1.0)

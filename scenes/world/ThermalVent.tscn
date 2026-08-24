@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://b2m6v5x8p9q1"]
+[gd_scene format=3 uid="uid://b2m6v5x8qaq1"]
 
 [ext_resource type="Script" path="res://scripts/world/thermal_vent.gd" id="1_vent"]
 

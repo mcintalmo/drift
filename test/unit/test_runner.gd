@@ -11,6 +11,7 @@ const TestPilotLocomotion = preload("res://test/unit/test_pilot_locomotion.gd")
 const TestCombatBreach = preload("res://test/unit/test_combat_breach.gd")
 const TestTrainDecoupling = preload("res://test/unit/test_train_decoupling.gd")
 const TestHexUIMath = preload("res://test/unit/test_hex_ui_math.gd")
+const TestCameraOcclusion = preload("res://test/unit/test_camera_occlusion.gd")
 
 func _init() -> void:
 	print("==================================================")
@@ -32,7 +33,8 @@ func _init() -> void:
 		{"name": "Pilot Locomotion & Jetpack Mobility", "instance": TestPilotLocomotion.new()},
 		{"name": "Combat Damage & Plasma Breaching", "instance": TestCombatBreach.new()},
 		{"name": "Train Car Decoupling & Rail Dynamics", "instance": TestTrainDecoupling.new()},
-		{"name": "Hexagonal 2D UI Math & Axial Symmetry", "instance": TestHexUIMath.new()}
+		{"name": "Hexagonal 2D UI Math & Axial Symmetry", "instance": TestHexUIMath.new()},
+		{"name": "Camera Terrain & Prop See-Through Occlusion", "instance": TestCameraOcclusion.new()}
 	]
 	
 	for suite: Dictionary in test_suites:

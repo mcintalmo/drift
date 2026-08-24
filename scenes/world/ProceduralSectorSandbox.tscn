@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3 uid="uid://c5v8m2lap8w1"]
+[gd_scene format=3 uid="uid://c5v8m2lap8w1"]
 
 [ext_resource type="Script" path="res://scripts/world/hex_sector_manager.gd" id="1_sector_mgr"]
 [ext_resource type="Resource" path="res://resources/biomes/temperate_permafrost.tres" id="2_biome"]

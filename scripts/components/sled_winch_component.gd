@@ -5,7 +5,6 @@ const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 
 signal tether_attached(anchor_pos: Vector3, is_dynamic: bool)
 signal tether_detached
-signal cable_snapped
 signal tension_updated(current_tension_n: float, max_tension_n: float)
 
 @export_group("Dependencies")
@@ -94,7 +93,7 @@ func fire_quick_cone(forward_dir: Vector3) -> bool:
 			var to_anchor: Vector3 = anchor_pos - origin
 			var dist: float = to_anchor.length()
 			
-			if dist <= best_dist and dist > 1.2:
+			if dist <= best_dist and dist > 1.0:
 				var dir_to_anchor: Vector3 = to_anchor.normalized()
 				var dot_fwd: float = forward_dir.dot(dir_to_anchor)
 				var dot_cam: float = cam_forward.dot(dir_to_anchor)
@@ -167,19 +166,19 @@ func compute_tether_force(delta: float, current_velocity: Vector3) -> Vector3:
 	var to_anchor: Vector3 = current_target_pos - get_winch_position()
 	var current_len: float = to_anchor.length()
 	
-	# Reel in cable
+	# Reel in cable: rapidly shortens down to 2.5 meters when actively reeling
 	if _is_reeling_in and winch_data:
-		_rest_cable_length_m = maxf(4.0, _rest_cable_length_m - winch_data.reel_in_speed_ms * delta)
+		_rest_cable_length_m = maxf(2.5, _rest_cable_length_m - (winch_data.reel_in_speed_ms * 1.5) * delta)
 	
 	var stretch: float = current_len - _rest_cable_length_m
 	if stretch <= 0.0:
 		current_tension_force = 0.0
-		tension_updated.emit(0.0, winch_data.tensile_limit_force if winch_data else 5500.0)
+		tension_updated.emit(0.0, 99999.0)
 		return Vector3.ZERO
 	
 	var cable_dir: Vector3 = to_anchor.normalized()
-	var spring_k: float = winch_data.spring_constant_k if winch_data else 650.0
-	var damp_c: float = winch_data.damping_coefficient_c if winch_data else 28.0
+	var spring_k: float = (winch_data.spring_constant_k if winch_data else 650.0) * 1.5
+	var damp_c: float = (winch_data.damping_coefficient_c if winch_data else 28.0) * 1.2
 	
 	var spring_force_mag: float = spring_k * stretch
 	
@@ -191,15 +190,12 @@ func compute_tether_force(delta: float, current_velocity: Vector3) -> Vector3:
 	var damping_force_mag: float = damp_c * separation_velocity
 	var total_tension: float = maxf(0.0, spring_force_mag + damping_force_mag)
 	
-	current_tension_force = total_tension
-	var max_limit: float = winch_data.tensile_limit_force if winch_data else 5500.0
-	tension_updated.emit(current_tension_force, max_limit)
-	GlobalEvents.emit_winch_tension(current_tension_force, max_limit)
+	# Extra active reeling pull force when reeling in
+	if _is_reeling_in:
+		total_tension += 900.0
 	
-	# Snap check
-	if current_tension_force >= max_limit:
-		cable_snapped.emit()
-		detach_tether()
-		return Vector3.ZERO
+	current_tension_force = total_tension
+	tension_updated.emit(current_tension_force, 99999.0)
+	GlobalEvents.emit_winch_tension(current_tension_force, 99999.0)
 	
 	return cable_dir * total_tension

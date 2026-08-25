@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://b7v8m2lap8w2"]
+[gd_scene format=3 uid="uid://b7v8m2lap8w2"]
 
 [ext_resource type="Script" path="res://scripts/world/hex_sector_manager.gd" id="1_sector_mgr"]
 [ext_resource type="Resource" path="res://resources/biomes/active_heist_canyon.tres" id="2_biome"]

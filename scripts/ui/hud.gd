@@ -40,6 +40,9 @@ func _ready() -> void:
 		GlobalEvents.instance.pilot_dismounted_sled.connect(func(_sled: Node) -> void:
 			show_banner("ON FOOT - [SPACE] JETPACK - [LMB] BREACH - [G / RMB] GRAPPLE - [F] MOUNT")
 		)
+		GlobalEvents.instance.winch_attached.connect(func(_pos: Vector3, _is_dyn: bool) -> void:
+			show_banner("TETHERED TO TRAIN - HOLD [W / SHIFT] TO REEL IN - [G / RMB] DETACH")
+		)
 		
 	_setup_train_tracker_ui()
 

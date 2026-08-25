@@ -24,8 +24,8 @@ func physics_update(delta: float) -> void:
 	var drift: bool = Input.is_action_pressed(&"handbrake_drift") if is_driven else false
 	var lean: float = Input.get_axis(&"pilot_lean_left", &"pilot_lean_right") if is_driven else 0.0
 	
-	# Reel in input
-	var is_reeling: bool = Input.is_action_pressed(&"winch_reel") if is_driven else false
+	# Reel in input: holding [W] (accelerate), [Shift] (boost), or [RMB] actively reels in to bumper
+	var is_reeling: bool = (throttle > 0.0) or Input.is_action_pressed(&"winch_reel") or Input.is_action_pressed(&"sprint") if is_driven else true
 	winch_component.set_reeling(is_reeling)
 	
 	# Calculate spring tension force from cable

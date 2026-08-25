@@ -155,7 +155,7 @@ func detach_tether() -> void:
 func set_reeling(is_reeling: bool) -> void:
 	_is_reeling_in = is_reeling
 
-## Computes spring force vector exerted on the sled by the cable
+## Computes high-tensile rigid tow force vector exerted on the sled by the cable
 func compute_tether_force(delta: float, current_velocity: Vector3) -> Vector3:
 	if not is_tethered:
 		return Vector3.ZERO
@@ -168,7 +168,7 @@ func compute_tether_force(delta: float, current_velocity: Vector3) -> Vector3:
 	
 	# Reel in cable: rapidly shortens down to 2.5 meters when actively reeling
 	if _is_reeling_in and winch_data:
-		_rest_cable_length_m = maxf(2.5, _rest_cable_length_m - (winch_data.reel_in_speed_ms * 1.5) * delta)
+		_rest_cable_length_m = maxf(2.5, _rest_cable_length_m - winch_data.reel_in_speed_ms * delta)
 	
 	var stretch: float = current_len - _rest_cable_length_m
 	if stretch <= 0.0:
@@ -177,8 +177,8 @@ func compute_tether_force(delta: float, current_velocity: Vector3) -> Vector3:
 		return Vector3.ZERO
 	
 	var cable_dir: Vector3 = to_anchor.normalized()
-	var spring_k: float = (winch_data.spring_constant_k if winch_data else 650.0) * 1.5
-	var damp_c: float = (winch_data.damping_coefficient_c if winch_data else 28.0) * 1.2
+	var spring_k: float = winch_data.spring_constant_k if winch_data else 1800.0
+	var damp_c: float = winch_data.damping_coefficient_c if winch_data else 420.0
 	
 	var spring_force_mag: float = spring_k * stretch
 	
@@ -187,12 +187,13 @@ func compute_tether_force(delta: float, current_velocity: Vector3) -> Vector3:
 	var relative_vel: Vector3 = host_vel - current_velocity
 	var separation_velocity: float = relative_vel.dot(cable_dir)
 	
-	var damping_force_mag: float = damp_c * separation_velocity
-	var total_tension: float = maxf(0.0, spring_force_mag + damping_force_mag)
+	# Over-damped rigid response: completely eliminates rubber-banding bounce
+	var damping_force_mag: float = damp_c * maxf(0.0, separation_velocity)
+	var total_tension: float = spring_force_mag + damping_force_mag
 	
-	# Extra active reeling pull force when reeling in
+	# Active winch motor pull when reeling in
 	if _is_reeling_in:
-		total_tension += 900.0
+		total_tension += 1400.0
 	
 	current_tension_force = total_tension
 	tension_updated.emit(current_tension_force, 99999.0)

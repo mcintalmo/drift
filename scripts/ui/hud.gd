@@ -41,7 +41,7 @@ func _ready() -> void:
 			show_banner("ON FOOT - [SPACE] JETPACK - [LMB] BREACH - [G / RMB] GRAPPLE - [F] MOUNT")
 		)
 		GlobalEvents.instance.winch_attached.connect(func(_pos: Vector3, _is_dyn: bool) -> void:
-			show_banner("TETHERED TO TRAIN - HOLD [W / SHIFT] TO REEL IN - [G / RMB] DETACH")
+			show_banner("TETHERED TO TRAIN - HOLD [R / SHIFT] TO REEL IN - [G / RMB] DETACH - [F] DISMOUNT")
 		)
 		
 	_setup_train_tracker_ui()

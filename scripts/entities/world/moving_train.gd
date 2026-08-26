@@ -12,6 +12,7 @@ signal car_decoupled(car_index: int)
 @export var acceleration_ms2: float = 3.5
 @export var start_delay_seconds: float = 4.0
 @export var car_spacing_m: float = 10.0
+@export var bogie_wheelbase_m: float = 6.4
 @export var train_cars: Array[TrainCar] = []
 
 var curve_3d: Curve3D
@@ -81,21 +82,35 @@ func _physics_process(delta: float) -> void:
 		has_escaped = true
 		train_escaped_into_exit_tunnel.emit()
 
-func _update_car_positions(_delta: float) -> void:
+## Samples continuous 3D track position with linear tunnel extensions at endpoints
+func _sample_track_point(s: float) -> Vector3:
 	if not curve_3d or total_track_length_m <= 0.0:
-		return
+		return Vector3.ZERO
 		
 	var start_pt: Vector3 = curve_3d.sample_baked(0.0)
-	var next_start_pt: Vector3 = curve_3d.sample_baked(minf(0.6, total_track_length_m))
+	var next_start_pt: Vector3 = curve_3d.sample_baked(minf(1.0, total_track_length_m))
 	var start_dir: Vector3 = (next_start_pt - start_pt).normalized()
 	if start_dir.length_squared() < 0.01:
 		start_dir = Vector3(0, 0, 1)
 		
 	var end_pt: Vector3 = curve_3d.sample_baked(total_track_length_m)
-	var prev_end_pt: Vector3 = curve_3d.sample_baked(maxf(0.0, total_track_length_m - 0.6))
+	var prev_end_pt: Vector3 = curve_3d.sample_baked(maxf(0.0, total_track_length_m - 1.0))
 	var end_dir: Vector3 = (end_pt - prev_end_pt).normalized()
 	if end_dir.length_squared() < 0.01:
 		end_dir = Vector3(0, 0, 1)
+		
+	if s < 0.0:
+		return start_pt + (start_dir * s)
+	elif s > total_track_length_m:
+		return end_pt + (end_dir * (s - total_track_length_m))
+	else:
+		return curve_3d.sample_baked(s)
+
+func _update_car_positions(_delta: float) -> void:
+	if not curve_3d or total_track_length_m <= 0.0:
+		return
+
+	var half_wheelbase: float = bogie_wheelbase_m * 0.5
 
 	for i: int in range(train_cars.size()):
 		var car: TrainCar = train_cars[i]
@@ -110,38 +125,29 @@ func _update_car_positions(_delta: float) -> void:
 		else:
 			target_s = car.distance_along_track
 			
-		var pos_3d: Vector3 = Vector3.ZERO
-		var dir_3d: Vector3 = Vector3.FORWARD
+		# Dual-point contact (front bogie and rear bogie)
+		var front_pos: Vector3 = _sample_track_point(target_s + half_wheelbase)
+		var rear_pos: Vector3 = _sample_track_point(target_s - half_wheelbase)
 		
-		if target_s < 0.0:
-			# Positioned backwards along tangent inside the entrance cave
-			pos_3d = start_pt + (start_dir * target_s)
-			dir_3d = start_dir
-		elif target_s > total_track_length_m:
-			# Positioned forward along tangent inside the exit tunnel
-			var over_s: float = target_s - total_track_length_m
-			pos_3d = end_pt + (end_dir * over_s)
-			dir_3d = end_dir
-		else:
-			# Along 3D Curve Spline on track
-			pos_3d = curve_3d.sample_baked(target_s)
-			var next_s: float = minf(target_s + 0.6, total_track_length_m)
-			var next_pos: Vector3 = curve_3d.sample_baked(next_s)
-			dir_3d = (next_pos - pos_3d).normalized()
-			if dir_3d.length_squared() < 0.01:
-				dir_3d = start_dir
+		# Center position is the midpoint between front and rear wheelsets
+		var center_pos: Vector3 = (front_pos + rear_pos) * 0.5
+		
+		# Direction is the tangent line connecting rear to front wheelset
+		var car_dir: Vector3 = (front_pos - rear_pos).normalized()
+		if car_dir.length_squared() < 0.01:
+			car_dir = Vector3.FORWARD
 			
-		var rot_y: float = atan2(dir_3d.x, dir_3d.z)
-		var pitch_x: float = -asin(clampf(dir_3d.y, -0.9, 0.9))
+		var rot_y: float = atan2(car_dir.x, car_dir.z)
+		var pitch_x: float = -asin(clampf(car_dir.y, -0.9, 0.9))
 		
-		var is_car_active: bool = (target_s >= -3.5) and (target_s <= total_track_length_m + 3.5)
+		var is_car_active: bool = (target_s >= -4.5) and (target_s <= total_track_length_m + 4.5)
 		car.visible = is_car_active
 		car.process_mode = Node.PROCESS_MODE_INHERIT if is_car_active else Node.PROCESS_MODE_DISABLED
 		
 		if car.is_inside_tree():
-			car.global_position = pos_3d
+			car.global_position = center_pos
 		else:
-			car.position = pos_3d
+			car.position = center_pos
 		car.rotation = Vector3(pitch_x, rot_y, 0.0)
 
 ## Returns estimated time remaining in seconds until the train enters the exit tunnel

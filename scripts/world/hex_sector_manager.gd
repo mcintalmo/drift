@@ -383,6 +383,16 @@ func _calculate_rail_proximity(coord: Vector2i) -> Dictionary:
 	var target_y: float = sample_terrain_surface_y(nearest_pos.x, nearest_pos.z)
 	return {"dist": min_dist, "y": target_y}
 
+## Evaluates Hermite cubic interpolation for smooth continuous 2D/3D track curvature
+func _sample_smooth_hermite_2d(p0: Vector3, t0: Vector3, p1: Vector3, t1: Vector3, t: float) -> Vector3:
+	var t2: float = t * t
+	var t3: float = t2 * t
+	var h00: float = 2.0 * t3 - 3.0 * t2 + 1.0
+	var h10: float = t3 - 2.0 * t2 + t
+	var h01: float = -2.0 * t3 + 3.0 * t2
+	var h11: float = t3 - t2
+	return (p0 * h00) + (t0 * h10) + (p1 * h01) + (t1 * h11)
+
 ## Spawns multi-chord ground-conforming 3D rail pieces strictly on top of the undulating rolling terrain
 func _spawn_streamed_rail_segment_at(coord: Vector2i, tile: Node3D) -> void:
 	var seg_info: Dictionary = _macro_rail_segments[coord]
@@ -390,22 +400,31 @@ func _spawn_streamed_rail_segment_at(coord: Vector2i, tile: Node3D) -> void:
 	if next_coord == coord:
 		return
 		
-	var from_world_2d: Vector3 = axial_to_world_pos(coord)
-	var to_world_2d: Vector3 = axial_to_world_pos(next_coord)
+	var idx: int = seg_info.get("path_index", -1)
+	var total_nodes: int = _macro_railroad_path.size()
+	
+	var p_prev: Vector3 = axial_to_world_pos(_macro_railroad_path[idx - 1]) if (idx > 0 and idx < total_nodes) else axial_to_world_pos(coord)
+	var p_cur: Vector3 = axial_to_world_pos(coord)
+	var p_next: Vector3 = axial_to_world_pos(next_coord)
+	var p_after: Vector3 = axial_to_world_pos(_macro_railroad_path[idx + 2]) if (idx + 2 < total_nodes and idx >= 0) else axial_to_world_pos(next_coord)
+	
+	var t_cur: Vector3 = (p_next - p_prev) * 0.5 if idx > 0 else (p_next - p_cur)
+	var t_next: Vector3 = (p_after - p_cur) * 0.5 if (idx + 2 < total_nodes and idx >= 0) else (p_next - p_cur)
 	
 	var is_active: bool = biome_data.get("is_railroad_active") if "is_railroad_active" in biome_data else false
 	
 	var multi_segment_root: Node3D = Node3D.new()
 	multi_segment_root.name = "RailSegmentGroup_%d_%d" % [coord.x, coord.y]
 	
-	# Subdivide into 4 multi-chord sub-segments so tracks hug convex hill crests and concave valleys perfectly
-	var sub_steps: int = 4
+	# Subdivide into 6 multi-chord sub-segments with smooth tangent curvature
+	# Each sub-chord transitions ~8-10 degrees instead of a sharp 60-degree snap
+	var sub_steps: int = 6
 	for s: int in range(sub_steps):
 		var t1: float = float(s) / float(sub_steps)
 		var t2: float = float(s + 1) / float(sub_steps)
 		
-		var p1: Vector3 = from_world_2d.lerp(to_world_2d, t1)
-		var p2: Vector3 = from_world_2d.lerp(to_world_2d, t2)
+		var p1: Vector3 = _sample_smooth_hermite_2d(p_cur, t_cur, p_next, t_next, t1)
+		var p2: Vector3 = _sample_smooth_hermite_2d(p_cur, t_cur, p_next, t_next, t2)
 		
 		# Sample continuous terrain height at each sub-vertex (+0.14m above ground)
 		p1.y = sample_terrain_surface_y(p1.x, p1.z) + 0.14
@@ -429,8 +448,8 @@ func _spawn_streamed_rail_segment_at(coord: Vector2i, tile: Node3D) -> void:
 	
 	# Check if this segment carries an abandoned loot freight car (derelict tracks only)
 	if not is_active and seg_info.get("has_car", false):
-		var mid_2d: Vector3 = (from_world_2d + to_world_2d) * 0.5
-		var dir_3d: Vector3 = (to_world_2d - from_world_2d).normalized()
+		var mid_2d: Vector3 = _sample_smooth_hermite_2d(p_cur, t_cur, p_next, t_next, 0.5)
+		var dir_3d: Vector3 = (p_next - p_cur).normalized()
 		var car_pos: Vector3 = mid_2d
 		car_pos.y = sample_terrain_surface_y(mid_2d.x, mid_2d.z) + 1.25
 		
@@ -558,7 +577,8 @@ func _plan_macro_railroad_corridor(start: Vector2i, end: Vector2i) -> void:
 		
 		_macro_rail_segments[cur_c] = {
 			"next": next_c,
-			"has_car": has_car
+			"has_car": has_car,
+			"path_index": idx
 		}
 		
 	railroad_generated.emit(_macro_railroad_path.size())
@@ -800,19 +820,23 @@ func get_active_moving_train() -> Node:
 ## Generates a smooth 3D Curve3D spline matching the multi-chord track geometry
 func get_macro_railroad_curve() -> Curve3D:
 	var curve: Curve3D = Curve3D.new()
-	if _macro_railroad_path.is_empty():
+	var total_nodes: int = _macro_railroad_path.size()
+	if total_nodes < 2:
 		return curve
 		
-	var sub_steps: int = 4
-	for idx: int in range(_macro_railroad_path.size() - 1):
-		var cur_c: Vector2i = _macro_railroad_path[idx]
-		var next_c: Vector2i = _macro_railroad_path[idx + 1]
-		var p_start_2d: Vector3 = axial_to_world_pos(cur_c)
-		var p_end_2d: Vector3 = axial_to_world_pos(next_c)
+	var sub_steps: int = 6
+	for idx: int in range(total_nodes - 1):
+		var p_prev: Vector3 = axial_to_world_pos(_macro_railroad_path[idx - 1]) if idx > 0 else axial_to_world_pos(_macro_railroad_path[idx])
+		var p_cur: Vector3 = axial_to_world_pos(_macro_railroad_path[idx])
+		var p_next: Vector3 = axial_to_world_pos(_macro_railroad_path[idx + 1])
+		var p_after: Vector3 = axial_to_world_pos(_macro_railroad_path[idx + 2]) if idx + 2 < total_nodes else axial_to_world_pos(_macro_railroad_path[idx + 1])
+		
+		var t_cur: Vector3 = (p_next - p_prev) * 0.5 if idx > 0 else (p_next - p_cur)
+		var t_next: Vector3 = (p_after - p_cur) * 0.5 if idx + 2 < total_nodes else (p_next - p_cur)
 		
 		for s: int in range(sub_steps):
 			var t: float = float(s) / float(sub_steps)
-			var pt: Vector3 = p_start_2d.lerp(p_end_2d, t)
+			var pt: Vector3 = _sample_smooth_hermite_2d(p_cur, t_cur, p_next, t_next, t)
 			pt.y = sample_terrain_surface_y(pt.x, pt.z) + 0.35 + 0.16 # Positioned directly on rails
 			curve.add_point(pt)
 			

@@ -7,8 +7,8 @@ signal grapple_fired(target_pos: Vector3)
 signal grapple_latched(target_pos: Vector3, is_heavy: bool)
 signal grapple_released
 
-@export var max_range_meters: float = 24.0
-@export var pull_speed_ms: float = 20.0
+@export var max_range_meters: float = 28.0
+@export var pull_speed_ms: float = 22.0
 @export var crate_drag_force: float = 45.0
 @export var cable_mesh: MeshInstance3D
 
@@ -102,7 +102,7 @@ func fire_grapple(origin_pos: Vector3, look_dir: Vector3, space_state: PhysicsDi
 		grapple_latched.emit(target_anchor_pos, is_target_heavy)
 		return true
 	
-	# 2. Raycast fallback against physical structures, train cars, and crates
+	# 2. Raycast fallback against physical structures, train cars, sled, and crates
 	if space_state:
 		var ray_end: Vector3 = origin_pos + (look_dir.normalized() * max_range_meters)
 		var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin_pos, ray_end)
@@ -145,38 +145,48 @@ func process_grapple(delta: float, pilot_global_pos: Vector3) -> Vector3:
 	var to_target: Vector3 = cur_target_pos - pilot_global_pos
 	var dist: float = to_target.length()
 	
-	# Host velocity (e.g. moving train speed ~14m/s)
+	# Host velocity (e.g. moving train speed ~14m/s or moving sled speed)
 	var host_velocity: Vector3 = Vector3.ZERO
 	if target_anchor and is_instance_valid(target_anchor):
 		host_velocity = target_anchor.get_parent_body_velocity()
 	elif target_node and is_instance_valid(target_node):
-		if "forward_speed_ms" in target_node and "global_transform" in target_node:
+		if "velocity" in target_node:
+			host_velocity = target_node.velocity
+		elif "forward_speed_ms" in target_node and "global_transform" in target_node:
 			var fwd: Vector3 = -target_node.global_transform.basis.z.normalized()
 			host_velocity = fwd * float(target_node.get("forward_speed_ms"))
 	
-	# Boarding / Arrival Threshold (within 2.2m of train roof or anchor)
-	if dist <= 2.2:
-		var is_boarding: bool = false
-		if target_anchor and target_anchor.is_roof_boarding_anchor:
-			is_boarding = true
+	# Arrival / Boarding Threshold (within 2.0m of target anchor or roof)
+	if dist <= 2.0:
+		var is_roof_boarding: bool = false
+		var is_sled_target: bool = false
+		if target_anchor:
+			if target_anchor.is_roof_boarding_anchor:
+				is_roof_boarding = true
+			elif target_anchor.anchor_type == GrappleAnchorClass.AnchorType.DYNAMIC_VEHICLE or (target_anchor.get_parent() and target_anchor.get_parent().is_in_group(&"player_sled")):
+				is_sled_target = true
 		elif target_node and (target_node is AnimatableBody3D or target_node.is_in_group(&"train_convoy")):
-			is_boarding = true
+			is_roof_boarding = true
 			
 		release_grapple()
-		if is_boarding:
-			# Impart matching forward momentum and upward landing hop onto the moving roof
-			return host_velocity + Vector3(0, 3.2, 0)
-		return Vector3.ZERO
+		if is_roof_boarding:
+			# Upward landing hop onto moving train roof
+			return host_velocity + Vector3(0, 3.4, 0)
+		elif is_sled_target:
+			# Match sled velocity upon landing next to chassis
+			return host_velocity + Vector3(0, 1.0, 0)
+		return host_velocity + Vector3(0, 1.2, 0)
 	
-	if dist > (max_range_meters * 1.5):
+	if dist > (max_range_meters * 1.6):
 		release_grapple()
 		return Vector3.ZERO
 	
 	var dir: Vector3 = to_target.normalized()
 	
 	if is_target_heavy:
-		# Pull pilot toward moving target + matching host forward velocity
-		return (dir * pull_speed_ms) + host_velocity
+		# Rapid precision direct-line transit pull directly to target coordinates + host velocity
+		var effective_speed: float = maxf(pull_speed_ms, dist * 6.5)
+		return (dir * effective_speed) + host_velocity
 	elif target_rigid_body and is_instance_valid(target_rigid_body):
 		# Pull lightweight crate toward pilot
 		var pull_crate_dir: Vector3 = (pilot_global_pos - target_rigid_body.global_position).normalized()

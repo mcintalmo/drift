@@ -17,18 +17,18 @@ func physics_update(delta: float) -> void:
 	
 	# Check grapple trigger (G or RMB)
 	if (Input.is_action_just_pressed(&"pilot_wrist_grapple") or Input.is_action_just_pressed(&"winch_quick")) and grapple:
-		var look_dir: Vector3 = -pilot.global_transform.basis.z
+		var cam: Camera3D = pilot.get_viewport().get_camera_3d() if (pilot.is_inside_tree() and pilot.get_viewport()) else null
+		var look_dir: Vector3 = -cam.global_transform.basis.z if (cam and cam.is_inside_tree()) else -pilot.global_transform.basis.z
 		if grapple.fire_grapple(pilot.global_position + Vector3(0, 1.0, 0), look_dir, pilot.get_world_3d().direct_space_state):
 			transition_requested.emit(&"GrapplingState")
 			return
-			
-	# Remote Sled Winch Detach trigger while on foot (G or RMB when not grappling)
-	if Input.is_action_just_pressed(&"winch_quick") or Input.is_action_just_pressed(&"pilot_wrist_grapple"):
-		var sleds: Array[Node] = pilot.get_tree().get_nodes_in_group(&"player_sled") if pilot.is_inside_tree() else []
-		for s_node: Node in sleds:
-			var w_comp: Node = s_node.get_node_or_null("SledWinchComponent")
-			if w_comp and w_comp.get("is_tethered") == true and w_comp.has_method("detach_tether"):
-				w_comp.call("detach_tether")
+		else:
+			# Remote Sled Winch Detach trigger while on foot (G or RMB when not grappling onto an anchor)
+			var sleds: Array[Node] = pilot.get_tree().get_nodes_in_group(&"player_sled") if pilot.is_inside_tree() else []
+			for s_node: Node in sleds:
+				var w_comp: Node = s_node.get_node_or_null("SledWinchComponent")
+				if w_comp and w_comp.get("is_tethered") == true and w_comp.has_method("detach_tether"):
+					w_comp.call("detach_tether")
 	
 	# Check attack / breach trigger
 	if Input.is_action_just_pressed(&"pilot_melee_breach") and weapon_socket:

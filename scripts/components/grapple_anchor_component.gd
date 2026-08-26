@@ -28,11 +28,15 @@ func get_parent_body_velocity() -> Vector3:
 	var p: Node = get_parent()
 	if not p:
 		return Vector3.ZERO
-	if "velocity" in p:
-		return p.velocity
 	if p is Node3D:
-		# If parent is a TrainCar or moving body with train speed
+		var drift_comp: Node = p.get_node_or_null("InertialDriftComponent")
+		if drift_comp and "velocity_3d" in drift_comp:
+			var d_vel: Vector3 = drift_comp.get("velocity_3d")
+			if d_vel.length_squared() > 0.01:
+				return d_vel
 		if "forward_speed_ms" in p:
 			var fwd: Vector3 = -p.global_transform.basis.z.normalized() if p.is_inside_tree() else -p.transform.basis.z.normalized()
 			return fwd * float(p.get("forward_speed_ms"))
+	if "velocity" in p:
+		return p.velocity
 	return Vector3.ZERO

@@ -53,6 +53,15 @@ func mount_into_sled(sled: CharacterBody3D) -> void:
 		if com_comp:
 			com_comp.set_mounted_pilot(self)
 			
+		# Momentum transfer on mount: preserve running/jetpack momentum into sled chassis
+		var drift_comp: Node = sled.get_node_or_null("InertialDriftComponent")
+		if drift_comp and "velocity_3d" in drift_comp:
+			var pilot_horiz: Vector3 = Vector3(velocity.x, 0.0, velocity.z)
+			var sled_cur: Vector3 = drift_comp.get("velocity_3d")
+			if pilot_horiz.length() > sled_cur.length():
+				drift_comp.set("velocity_3d", pilot_horiz)
+				sled.velocity = pilot_horiz
+			
 	if state_machine:
 		state_machine.transition_to(&"MountedState")
 	GlobalEvents.emit_pilot_mounted_sled(sled)
@@ -66,7 +75,14 @@ func dismount_from_sled() -> void:
 	var sled_base_pos: Vector3 = prev_sled.global_position if prev_sled.is_inside_tree() else prev_sled.position
 	var sled_basis_x: Vector3 = prev_sled.global_transform.basis.x if prev_sled.is_inside_tree() else Vector3.RIGHT
 	var dismount_pos: Vector3 = sled_base_pos + Vector3(0, 1.2, 0) + (sled_basis_x * 1.5)
+	
+	# Fetch exact full 3D velocity from InertialDriftComponent or CharacterBody3D
 	var sled_vel: Vector3 = prev_sled.velocity
+	var drift_comp: Node = prev_sled.get_node_or_null("InertialDriftComponent")
+	if drift_comp and "velocity_3d" in drift_comp:
+		var d_vel: Vector3 = drift_comp.get("velocity_3d")
+		if d_vel.length_squared() > 0.01:
+			sled_vel = d_vel
 	
 	is_mounted_in_sled = false
 	if prev_sled:
@@ -82,7 +98,9 @@ func dismount_from_sled() -> void:
 		global_position = dismount_pos
 	else:
 		position = dismount_pos
-	velocity = sled_vel + Vector3(0, 4.0, 0)
+		
+	# Full momentum preservation: keep horizontal speed and add upward dismount jump impulse
+	velocity = sled_vel + Vector3(0, 3.8, 0)
 	
 	if state_machine:
 		var mounted_state: State = state_machine.get_node_or_null("MountedState") as State

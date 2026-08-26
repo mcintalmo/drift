@@ -54,6 +54,7 @@ func physics_update(delta: float) -> void:
 		move_speed = base_walk_speed * 1.6
 	
 	var input_dir: Vector2 = Input.get_vector(&"steer_left", &"steer_right", &"brake_reverse", &"accelerate")
+	var actual_move_vec: Vector3 = Vector3.ZERO
 	
 	if input_dir.length() > 0.05:
 		var cam: Camera3D = pilot.get_viewport().get_camera_3d() if (pilot.is_inside_tree() and pilot.get_viewport()) else null
@@ -69,23 +70,40 @@ func physics_update(delta: float) -> void:
 		# Compute character's local right shoulder vector based on active movement direction
 		var char_right: Vector3 = Vector3(-intended_move_dir.z, 0.0, intended_move_dir.x).normalized()
 		
-		# 2. Imbalance lateral veer (only active when weight is laterally off-center)
+		# Imbalance lateral veer (only active when weight is laterally off-center)
 		var pull_strength: float = clampf((backpack_mass / 70.0) * 0.35, 0.0, 0.45)
 		var body_imbalance_pull: Vector3 = char_right * (com_offset.x / 0.20) * pull_strength
 		
-		var actual_move_vec: Vector3 = (intended_move_dir + body_imbalance_pull).normalized()
-		
+		actual_move_vec = (intended_move_dir + body_imbalance_pull).normalized()
 		pilot.rotation.y = lerp_angle(pilot.rotation.y, atan2(-actual_move_vec.x, -actual_move_vec.z), 14.0 * delta)
-		pilot.velocity.x = actual_move_vec.x * move_speed
-		pilot.velocity.z = actual_move_vec.z * move_speed
+	
+	# 2. Locomotion Kinematics & Momentum Preservation
+	if not pilot.is_on_floor():
+		# AIRBORNE (Ballistic trajectory from dismount, jump, or ramp)
+		if input_dir.length() > 0.05:
+			pilot.velocity.x += actual_move_vec.x * 12.0 * delta
+			pilot.velocity.z += actual_move_vec.z * 12.0 * delta
+		# Low aerodynamic drag preserves high-speed dismount momentum
+		pilot.velocity.x = move_toward(pilot.velocity.x, 0.0, 0.8 * delta)
+		pilot.velocity.z = move_toward(pilot.velocity.z, 0.0, 0.8 * delta)
+		pilot.velocity.y -= 9.81 * delta
 	else:
-		# Stationary: zero velocity, completely still
-		pilot.velocity.x = move_toward(pilot.velocity.x, 0.0, 30.0 * delta)
-		pilot.velocity.z = move_toward(pilot.velocity.z, 0.0, 30.0 * delta)
+		# ON GROUND (Smooth slide friction when landing at high speed)
+		if input_dir.length() > 0.05:
+			var target_vx: float = actual_move_vec.x * move_speed
+			var target_vz: float = actual_move_vec.z * move_speed
+			pilot.velocity.x = move_toward(pilot.velocity.x, target_vx, 18.0 * delta)
+			pilot.velocity.z = move_toward(pilot.velocity.z, target_vz, 18.0 * delta)
+		else:
+			# Snow surface sliding deceleration
+			pilot.velocity.x = move_toward(pilot.velocity.x, 0.0, 10.0 * delta)
+			pilot.velocity.z = move_toward(pilot.velocity.z, 0.0, 10.0 * delta)
+		
+		pilot.velocity.y = 0.0
+		if jetpack:
+			jetpack.process_jetpack(delta, false, true, Vector3.ZERO)
 	
 	# 3. Procedural Torso Lean:
-	# - Lateral roll (Z) only occurs when weight is off-center (com_offset.x != 0)
-	# - Forward hunch (X) only occurs when weight is top-heavy (com_offset.y < 0). Low weight (com_offset.y > 0) has 0 pitch lean!
 	var visual_model: Node3D = pilot.get_node_or_null("VisualModel") as Node3D
 	if visual_model:
 		var target_lean_z: float = -(com_offset.x / 0.20) * deg_to_rad(14.0) * clampf(backpack_mass / 30.0, 0.0, 1.5)
@@ -93,13 +111,5 @@ func physics_update(delta: float) -> void:
 		var target_lean_x: float = (top_heavy_amount / 0.20) * deg_to_rad(12.0) * clampf(backpack_mass / 30.0, 0.0, 1.5)
 		visual_model.rotation.z = lerpf(visual_model.rotation.z, target_lean_z, 10.0 * delta)
 		visual_model.rotation.x = lerpf(visual_model.rotation.x, target_lean_x, 10.0 * delta)
-	
-	# 4. Gravity & ground check
-	if not pilot.is_on_floor():
-		pilot.velocity.y -= 9.81 * delta
-	else:
-		pilot.velocity.y = 0.0
-		if jetpack:
-			jetpack.process_jetpack(delta, false, true, Vector3.ZERO)
 	
 	pilot.move_and_slide()

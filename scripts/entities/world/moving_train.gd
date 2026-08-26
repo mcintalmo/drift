@@ -144,11 +144,7 @@ func _update_car_positions(_delta: float) -> void:
 		car.visible = is_car_active
 		car.process_mode = Node.PROCESS_MODE_INHERIT if is_car_active else Node.PROCESS_MODE_DISABLED
 		
-		if car.is_inside_tree():
-			car.global_position = center_pos
-		else:
-			car.position = center_pos
-		car.rotation = Vector3(pitch_x, rot_y, 0.0)
+		car.set_platform_transform(center_pos, Vector3(pitch_x, rot_y, 0.0), _delta)
 
 ## Returns estimated time remaining in seconds until the train enters the exit tunnel
 func get_time_until_extraction_seconds() -> float:

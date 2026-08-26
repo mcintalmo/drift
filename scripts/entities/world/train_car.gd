@@ -22,6 +22,12 @@ var forward_speed_ms: float = 0.0
 var distance_along_track: float = 0.0
 var is_coasting: bool = false
 
+# Real-time platform kinematics for riding characters
+var prev_global_pos: Vector3 = Vector3.ZERO
+var delta_displacement: Vector3 = Vector3.ZERO
+var delta_yaw_rad: float = 0.0
+var prev_yaw_rad: float = 0.0
+
 # Sub-nodes
 @onready var coupler_health_comp: HealthComponent = get_node_or_null("CouplerHealthComponent") as HealthComponent
 @onready var coupler_hurtbox: HurtboxComponent = get_node_or_null("CouplerHurtbox") as HurtboxComponent
@@ -61,6 +67,25 @@ func _physics_process(delta: float) -> void:
 		# Decoupled car gradually coasts to a halt along rails
 		forward_speed_ms = maxf(0.0, forward_speed_ms - 4.5 * delta)
 		distance_along_track += forward_speed_ms * delta
+
+## Sets platform position and orientation while tracking exact displacement delta for characters
+func set_platform_transform(new_pos: Vector3, new_rot: Vector3, delta: float) -> void:
+	if prev_global_pos != Vector3.ZERO and delta > 0.0:
+		delta_displacement = new_pos - prev_global_pos
+		delta_yaw_rad = wrapf(new_rot.y - prev_yaw_rad, -PI, PI)
+		forward_speed_ms = delta_displacement.length() / delta
+	else:
+		delta_displacement = Vector3.ZERO
+		delta_yaw_rad = 0.0
+		
+	prev_global_pos = new_pos
+	prev_yaw_rad = new_rot.y
+	
+	if is_inside_tree():
+		global_position = new_pos
+	else:
+		position = new_pos
+	rotation = new_rot
 
 ## Precision Stealth Plasma Torch Channel (Continuous welding interaction)
 func interact_plasma_torch(player: Node3D, donut: Node) -> void:

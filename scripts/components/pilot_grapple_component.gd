@@ -212,8 +212,8 @@ func process_grapple(delta: float, pilot_global_pos: Vector3) -> Vector3:
 			
 		release_grapple()
 		if is_roof_boarding:
-			# Upward landing hop onto moving train roof
-			return host_velocity + Vector3(0, 3.4, 0)
+			# Land softly on the moving roof (local velocity zero, ready for delta carry)
+			return Vector3(0, -1.0, 0)
 		elif is_sled_target:
 			# Match sled velocity upon landing next to chassis
 			return host_velocity + Vector3(0, 1.0, 0)

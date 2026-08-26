@@ -164,15 +164,15 @@ func _test_pilot_grapple_roof_boarding_boost() -> Dictionary:
 	var landing_impulse: Vector3 = grapple.process_grapple(0.016, Vector3(0.0, 3.0, 9.0))
 	var is_still_grappling: bool = grapple.is_grappling
 	
-	# Grapple should release and grant upward boarding boost (+Y)
-	var passed: bool = (not is_still_grappling) and (landing_impulse.y > 2.0)
+	# Grapple should release and grant gentle settling landing
+	var passed: bool = (not is_still_grappling) and is_equal_approx(landing_impulse.y, -1.0)
 	
 	grapple.free()
 	anchor.free()
 	return {
 		"name": "test_pilot_grapple_roof_boarding_boost",
 		"passed": passed,
-		"message": "Boarding boost upon roof arrival: %s, released=%s (passed: %s)" % [
+		"message": "Landing vector upon roof arrival: %s, released=%s (passed: %s)" % [
 			str(landing_impulse), str(not is_still_grappling), str(passed)
 		]
 	}

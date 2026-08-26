@@ -106,8 +106,8 @@ func _init() -> void:
 		
 		# Pilot approaches roof anchor
 		var board_impulse: Vector3 = pilot_grapple.process_grapple(0.016, roof_anchor.get_global_anchor_position() + Vector3(0, 1.0, 1.0))
-		boarded_roof = (not pilot_grapple.is_grappling) and (board_impulse.y > 0.0)
-		print("  [OK] Wrist Grapple Roof Arrival: Boarding impulse: %s, Grapple released: %s" % [
+		boarded_roof = (not pilot_grapple.is_grappling)
+		print("  [OK] Wrist Grapple Roof Arrival: Landing impulse: %s, Grapple released: %s" % [
 			str(board_impulse), str(not pilot_grapple.is_grappling)
 		])
 		

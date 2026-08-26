@@ -6,17 +6,34 @@ extends State
 @export var grapple: PilotGrappleComponent
 @export var weapon_socket: WeaponSocketComponent
 
+var _prev_riding_car: TrainCar = null
+
 func physics_update(delta: float) -> void:
 	if not pilot:
 		return
 	
 	var riding_car: TrainCar = _get_riding_train_car()
 	
+	# State transition: Just landed on moving train roof from the air/grapple
+	if riding_car and not _prev_riding_car:
+		# Reset horizontal velocity to local frame (standing still on roof)
+		pilot.velocity.x = 0.0
+		pilot.velocity.z = 0.0
+		pilot.velocity.y = -2.0
+	
+	# State transition: Just stepped or fell off the train roof into the open air
+	if not riding_car and _prev_riding_car and delta > 0.0:
+		# Transfer full train forward velocity into the air
+		pilot.velocity += (_prev_riding_car.delta_displacement / delta)
+		
+	_prev_riding_car = riding_car
+	
 	# Check jetpack / jump trigger
 	if Input.is_action_pressed(&"pilot_jump_jetpack") and jetpack and jetpack.has_fuel():
 		if riding_car and delta > 0.0:
 			# Impart full train platform momentum when launching off the moving roof
 			pilot.velocity += (riding_car.delta_displacement / delta)
+			_prev_riding_car = null
 		transition_requested.emit(&"JetpackState")
 		return
 	
@@ -48,7 +65,7 @@ func physics_update(delta: float) -> void:
 		com_offset = backpack.get_com_offset_2d()
 	
 	# 1. Base movement speed scaling
-	var base_walk_speed: float = 6.0
+	var base_walk_speed: float = 5.5
 	if backpack_mass > 30.0:
 		var extra_mass: float = backpack_mass - 30.0
 		base_walk_speed = maxf(2.2, base_walk_speed - (extra_mass * 0.045))
@@ -56,7 +73,7 @@ func physics_update(delta: float) -> void:
 	var move_speed: float = base_walk_speed
 	# Sprint allowed only if not overburdened (< 65kg backpack)
 	if Input.is_action_pressed(&"sprint") and backpack_mass < 65.0:
-		move_speed = base_walk_speed * 1.6
+		move_speed = base_walk_speed * 1.5
 	
 	var input_dir: Vector2 = Input.get_vector(&"steer_left", &"steer_right", &"brake_reverse", &"accelerate")
 	var actual_move_vec: Vector3 = Vector3.ZERO
@@ -96,8 +113,8 @@ func physics_update(delta: float) -> void:
 			pilot.velocity.z = move_toward(pilot.velocity.z, target_vz, 25.0 * delta)
 		else:
 			# Standing still relative to roof
-			pilot.velocity.x = move_toward(pilot.velocity.x, 0.0, 30.0 * delta)
-			pilot.velocity.z = move_toward(pilot.velocity.z, 0.0, 30.0 * delta)
+			pilot.velocity.x = move_toward(pilot.velocity.x, 0.0, 35.0 * delta)
+			pilot.velocity.z = move_toward(pilot.velocity.z, 0.0, 35.0 * delta)
 		
 		pilot.velocity.y = -3.5 # Downward floor snap
 		if jetpack:
@@ -148,7 +165,7 @@ func _get_riding_train_car() -> TrainCar:
 	if pilot.is_on_floor():
 		for i: int in range(pilot.get_slide_collision_count()):
 			var col: KinematicCollision3D = pilot.get_slide_collision(i)
-			if col.get_normal().y > 0.3:
+			if col.get_normal().y > 0.4:
 				var collider: Object = col.get_collider()
 				var car: TrainCar = _find_train_car(collider)
 				if car:
@@ -174,8 +191,8 @@ func _get_riding_train_car() -> TrainCar:
 		if node is TrainCar and node.visible:
 			var car: TrainCar = node as TrainCar
 			var local_pos: Vector3 = car.global_transform.affine_inverse() * pilot.global_position
-			# Boxcar bounds: X in [-1.8, 1.8], Z in [-4.8, 4.8], Y in [0.0, 4.8]
-			if absf(local_pos.x) <= 1.8 and absf(local_pos.z) <= 4.8 and local_pos.y >= 0.0 and local_pos.y <= 4.8:
+			# Boxcar bounds: X in [-1.8, 1.8], Z in [-4.5, 4.5], Y in [1.8, 4.6] (roof standing)
+			if absf(local_pos.x) <= 1.8 and absf(local_pos.z) <= 4.5 and local_pos.y >= 1.8 and local_pos.y <= 4.6:
 				return car
 				
 	return null

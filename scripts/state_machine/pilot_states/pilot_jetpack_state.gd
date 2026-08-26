@@ -73,9 +73,9 @@ func physics_update(delta: float) -> void:
 		visual_model.rotation.z = lerpf(visual_model.rotation.z, target_tilt_z, 8.0 * delta)
 		visual_model.rotation.x = lerpf(visual_model.rotation.x, target_tilt_x, 8.0 * delta)
 	
-	# Hover air drag
-	pilot.velocity.x = lerpf(pilot.velocity.x, 0.0, 2.0 * delta)
-	pilot.velocity.z = lerpf(pilot.velocity.z, 0.0, 2.0 * delta)
+	# Hover air drag (gentle to preserve ballistic / train momentum)
+	pilot.velocity.x = lerpf(pilot.velocity.x, 0.0, 0.4 * delta)
+	pilot.velocity.z = lerpf(pilot.velocity.z, 0.0, 0.4 * delta)
 	
 	pilot.move_and_slide()
 	

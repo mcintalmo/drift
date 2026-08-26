@@ -77,8 +77,12 @@ func physics_update(delta: float) -> void:
 		actual_move_vec = (intended_move_dir + body_imbalance_pull).normalized()
 		pilot.rotation.y = lerp_angle(pilot.rotation.y, atan2(-actual_move_vec.x, -actual_move_vec.z), 14.0 * delta)
 	
-	# 2. Locomotion Kinematics & Momentum Preservation
-	if not pilot.is_on_floor():
+	# 2. Moving Platform Velocity Query (Train Roof & Sled Coupling)
+	var platform_vel: Vector3 = _get_current_platform_velocity()
+	var is_on_moving_platform: bool = platform_vel.length_squared() > 0.5
+	
+	# 3. Locomotion Kinematics & Momentum Preservation
+	if not pilot.is_on_floor() and not is_on_moving_platform:
 		# AIRBORNE (Ballistic trajectory from dismount, jump, or ramp)
 		if input_dir.length() > 0.05:
 			pilot.velocity.x += actual_move_vec.x * 12.0 * delta
@@ -88,22 +92,26 @@ func physics_update(delta: float) -> void:
 		pilot.velocity.z = move_toward(pilot.velocity.z, 0.0, 0.8 * delta)
 		pilot.velocity.y -= 9.81 * delta
 	else:
-		# ON GROUND (Smooth slide friction when landing at high speed)
+		# ON GROUND OR STANDING ON MOVING TRAIN/SLED ROOF PLATFORM
 		if input_dir.length() > 0.05:
-			var target_vx: float = actual_move_vec.x * move_speed
-			var target_vz: float = actual_move_vec.z * move_speed
-			pilot.velocity.x = move_toward(pilot.velocity.x, target_vx, 18.0 * delta)
-			pilot.velocity.z = move_toward(pilot.velocity.z, target_vz, 18.0 * delta)
+			var target_vx: float = platform_vel.x + (actual_move_vec.x * move_speed)
+			var target_vz: float = platform_vel.z + (actual_move_vec.z * move_speed)
+			pilot.velocity.x = move_toward(pilot.velocity.x, target_vx, 30.0 * delta)
+			pilot.velocity.z = move_toward(pilot.velocity.z, target_vz, 30.0 * delta)
 		else:
-			# Snow surface sliding deceleration
-			pilot.velocity.x = move_toward(pilot.velocity.x, 0.0, 10.0 * delta)
-			pilot.velocity.z = move_toward(pilot.velocity.z, 0.0, 10.0 * delta)
+			# Firm coupling to platform: standing on moving roof travels seamlessly with train
+			pilot.velocity.x = move_toward(pilot.velocity.x, platform_vel.x, 35.0 * delta)
+			pilot.velocity.z = move_toward(pilot.velocity.z, platform_vel.z, 35.0 * delta)
 		
-		pilot.velocity.y = 0.0
+		if is_on_moving_platform:
+			pilot.velocity.y = platform_vel.y
+		else:
+			pilot.velocity.y = 0.0
+			
 		if jetpack:
 			jetpack.process_jetpack(delta, false, true, Vector3.ZERO)
 	
-	# 3. Procedural Torso Lean:
+	# 4. Procedural Torso Lean:
 	var visual_model: Node3D = pilot.get_node_or_null("VisualModel") as Node3D
 	if visual_model:
 		var target_lean_z: float = -(com_offset.x / 0.20) * deg_to_rad(14.0) * clampf(backpack_mass / 30.0, 0.0, 1.5)
@@ -113,3 +121,59 @@ func physics_update(delta: float) -> void:
 		visual_model.rotation.x = lerpf(visual_model.rotation.x, target_lean_x, 10.0 * delta)
 	
 	pilot.move_and_slide()
+
+## Resolves moving train roof or sled platform velocity beneath the pilot's feet
+func _get_current_platform_velocity() -> Vector3:
+	if not pilot:
+		return Vector3.ZERO
+		
+	# 1. Check direct slide collisions on floor
+	if pilot.is_on_floor():
+		for i: int in range(pilot.get_slide_collision_count()):
+			var col: KinematicCollision3D = pilot.get_slide_collision(i)
+			if col.get_normal().y > 0.4:
+				var collider: Object = col.get_collider()
+				if collider:
+					var train_vel: Vector3 = _extract_body_velocity(collider)
+					if train_vel.length_squared() > 0.01:
+						return train_vel
+						
+	# 2. Downward probe raycast to detect moving roof or sled underneath (within 1.2m)
+	var space_state: PhysicsDirectSpaceState3D = pilot.get_world_3d().direct_space_state if pilot.is_inside_tree() else null
+	if space_state:
+		var start: Vector3 = pilot.global_position + Vector3(0, 0.4, 0)
+		var end: Vector3 = pilot.global_position + Vector3(0, -1.2, 0)
+		var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(start, end)
+		query.exclude = [pilot.get_rid()]
+		var res: Dictionary = space_state.intersect_ray(query)
+		if not res.is_empty():
+			var collider: Object = res.get("collider")
+			if collider:
+				var train_vel: Vector3 = _extract_body_velocity(collider)
+				if train_vel.length_squared() > 0.01:
+					return train_vel
+					
+	return pilot.get_platform_velocity()
+
+func _extract_body_velocity(collider: Object) -> Vector3:
+	if not collider or not (collider is Node):
+		return Vector3.ZERO
+	var cur: Node = collider as Node
+	var depth: int = 0
+	while cur and depth < 6:
+		if cur is TrainCar:
+			var car: TrainCar = cur as TrainCar
+			var fwd: Vector3 = -car.global_transform.basis.z.normalized() if car.is_inside_tree() else -car.transform.basis.z.normalized()
+			return fwd * car.forward_speed_ms
+		if cur is MovingTrain:
+			var train: MovingTrain = cur as MovingTrain
+			var fwd: Vector3 = -train.global_transform.basis.z.normalized() if train.is_inside_tree() else -train.transform.basis.z.normalized()
+			return fwd * train.current_speed_ms
+		if cur is CharacterBody3D and cur.is_in_group(&"player_sled"):
+			var drift_comp: Node = cur.get_node_or_null("InertialDriftComponent")
+			if drift_comp and "velocity_3d" in drift_comp:
+				return drift_comp.get("velocity_3d")
+			return (cur as CharacterBody3D).velocity
+		cur = cur.get_parent()
+		depth += 1
+	return Vector3.ZERO

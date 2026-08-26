@@ -87,12 +87,14 @@ func is_collider_grappleable(collider: Object) -> bool:
 		
 	# 2. Check node and its parent hierarchy for valid interactive structure groups
 	var cur: Node = node
-	while cur and cur != cur.get_tree().root:
+	var depth: int = 0
+	while cur and depth < 6:
 		if cur.is_in_group(&"grapple_anchors") or cur.is_in_group(&"train_convoy") or cur.is_in_group(&"player_sled") or cur.is_in_group(&"trees") or cur.is_in_group(&"boulders") or cur.is_in_group(&"loot_crates") or cur.is_in_group(&"props"):
 			return true
 		if cur.name.begins_with("ArmoredLocomotive") or cur.name.begins_with("ArmoredBoxcar") or cur.name.begins_with("SledChassis") or cur.name.begins_with("PetrifiedPine") or cur.name.begins_with("GlacialBoulder") or cur.name.begins_with("AbandonedRailCar") or cur.name.begins_with("GroundCrate"):
 			return true
 		cur = cur.get_parent()
+		depth += 1
 		
 	if node is RigidBody3D:
 		return true

@@ -10,6 +10,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_pilot_backpack_imbalance_pull())
 	results.append(_test_pilot_grapple_dynamic_tracking())
 	results.append(_test_pilot_grapple_roof_boarding_boost())
+	results.append(_test_pilot_moving_train_roof_physics_coupling())
 	return results
 
 func _test_jetpack_thrust_and_fuel_consumption() -> Dictionary:
@@ -173,5 +174,26 @@ func _test_pilot_grapple_roof_boarding_boost() -> Dictionary:
 		"passed": passed,
 		"message": "Boarding boost upon roof arrival: %s, released=%s (passed: %s)" % [
 			str(landing_impulse), str(not is_still_grappling), str(passed)
+		]
+	}
+
+func _test_pilot_moving_train_roof_physics_coupling() -> Dictionary:
+	var car: TrainCar = TrainCar.new()
+	car.forward_speed_ms = 14.5
+	car.rotation = Vector3.ZERO
+	
+	var walk_state: PilotWalkingState = PilotWalkingState.new()
+	var extracted_vel: Vector3 = walk_state._extract_body_velocity(car)
+	
+	# Moving train velocity along forward vector -Z (0, 0, -14.5)
+	var passed: bool = is_equal_approx(extracted_vel.z, -14.5) and is_equal_approx(extracted_vel.x, 0.0)
+	
+	car.free()
+	walk_state.free()
+	return {
+		"name": "test_pilot_moving_train_roof_physics_coupling",
+		"passed": passed,
+		"message": "Moving train roof velocity coupled to pilot: %s (expected 14.5 m/s forward) [passed: %s]" % [
+			str(extracted_vel), str(passed)
 		]
 	}

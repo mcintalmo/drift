@@ -7,8 +7,8 @@ signal grapple_fired(target_pos: Vector3)
 signal grapple_latched(target_pos: Vector3, is_heavy: bool)
 signal grapple_released
 
-@export var max_range_meters: float = 28.0
-@export var pull_speed_ms: float = 22.0
+@export var max_range_meters: float = 30.0
+@export var pull_speed_ms: float = 24.0
 @export var crate_drag_force: float = 45.0
 @export var cable_mesh: MeshInstance3D
 
@@ -70,14 +70,43 @@ func get_current_target_position() -> Vector3:
 		return target_rigid_body.global_transform * local_hit_offset
 	return target_anchor_pos
 
+## Validates whether a physics collider represents a valid grapple-able structure (trees, train cars, sleds, pylons, crates)
+func is_collider_grappleable(collider: Object) -> bool:
+	if not collider or not (collider is Node):
+		return false
+		
+	var node: Node = collider as Node
+	
+	# Explicitly reject ground / hex terrain surfaces
+	if node.is_in_group(&"terrain") or node.name.begins_with("HexTile") or node.name.begins_with("Terrain") or node.name.begins_with("Ground") or node.name.begins_with("RailSubPiece"):
+		return false
+		
+	# 1. Has GrappleAnchorComponent or is in grapple_anchors group
+	if node.is_in_group(&"grapple_anchors") or node.has_node("GrappleAnchorComponent") or node.has_node("SledGrappleAnchor"):
+		return true
+		
+	# 2. Check node and its parent hierarchy for valid interactive structure groups
+	var cur: Node = node
+	while cur and cur != cur.get_tree().root:
+		if cur.is_in_group(&"grapple_anchors") or cur.is_in_group(&"train_convoy") or cur.is_in_group(&"player_sled") or cur.is_in_group(&"trees") or cur.is_in_group(&"boulders") or cur.is_in_group(&"loot_crates") or cur.is_in_group(&"props"):
+			return true
+		if cur.name.begins_with("ArmoredLocomotive") or cur.name.begins_with("ArmoredBoxcar") or cur.name.begins_with("SledChassis") or cur.name.begins_with("PetrifiedPine") or cur.name.begins_with("GlacialBoulder") or cur.name.begins_with("AbandonedRailCar") or cur.name.begins_with("GroundCrate"):
+			return true
+		cur = cur.get_parent()
+		
+	if node is RigidBody3D:
+		return true
+		
+	return false
+
 func fire_grapple(origin_pos: Vector3, look_dir: Vector3, space_state: PhysicsDirectSpaceState3D) -> bool:
 	if is_grappling:
 		release_grapple()
 		return false
 	
-	# 1. First search for grapple anchors in forward cone
+	# 1. Search for grapple anchors in forward camera cone
 	var best_anchor: GrappleAnchorComponent = null
-	var best_dist: float = max_range_meters
+	var best_score: float = -9999.0
 	
 	var anchors: Array[Node] = get_tree().get_nodes_in_group(&"grapple_anchors") if is_inside_tree() else []
 	for node: Node in anchors:
@@ -85,11 +114,21 @@ func fire_grapple(origin_pos: Vector3, look_dir: Vector3, space_state: PhysicsDi
 			var a_pos: Vector3 = node.get_global_anchor_position()
 			var to_a: Vector3 = a_pos - origin_pos
 			var dist: float = to_a.length()
-			if dist <= max_range_meters and dist < best_dist:
-				var angle: float = rad_to_deg(look_dir.angle_to(to_a))
-				if angle <= 65.0:
-					best_dist = dist
-					best_anchor = node
+			if dist <= max_range_meters and dist > 1.0:
+				var dir_to_a: Vector3 = to_a.normalized()
+				var dot: float = look_dir.dot(dir_to_a)
+				if dot >= 0.50: # Wide ~60-degree lock cone
+					# Line-of-sight check
+					var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin_pos, a_pos)
+					var res: Dictionary = space_state.intersect_ray(query) if space_state else {}
+					var hit_col: Object = res.get("collider")
+					var is_clear: bool = res.is_empty() or hit_col == node or hit_col == node.get_parent() or (hit_col is Node and (hit_col.is_in_group(&"train_convoy") or hit_col.is_in_group(&"player_sled")))
+					
+					if is_clear:
+						var score: float = (dot * 50.0) - dist
+						if score > best_score:
+							best_score = score
+							best_anchor = node
 	
 	if best_anchor:
 		target_anchor = best_anchor
@@ -102,38 +141,39 @@ func fire_grapple(origin_pos: Vector3, look_dir: Vector3, space_state: PhysicsDi
 		grapple_latched.emit(target_anchor_pos, is_target_heavy)
 		return true
 	
-	# 2. Raycast fallback against physical structures, train cars, sled, and crates
+	# 2. Raycast fallback against physical structures (trains, trees, boulders, crates, sleds) - NEVER ground
 	if space_state:
 		var ray_end: Vector3 = origin_pos + (look_dir.normalized() * max_range_meters)
 		var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin_pos, ray_end)
 		var result: Dictionary = space_state.intersect_ray(query)
 		
 		if not result.is_empty():
-			var hit_pos: Vector3 = result.position
 			var collider: Object = result.collider
-			target_anchor = null
-			
-			if collider is RigidBody3D:
-				target_rigid_body = collider as RigidBody3D
-				target_node = target_rigid_body
-				local_hit_offset = target_rigid_body.global_transform.affine_inverse() * hit_pos
-				is_target_heavy = target_rigid_body.mass > 80.0
-			elif collider is Node3D:
-				target_rigid_body = null
-				target_node = collider as Node3D
-				local_hit_offset = target_node.global_transform.affine_inverse() * hit_pos
-				is_target_heavy = true
-			else:
-				target_rigid_body = null
-				target_node = null
-				target_anchor_pos = hit_pos
-				is_target_heavy = true
+			if is_collider_grappleable(collider):
+				var hit_pos: Vector3 = result.position
+				target_anchor = null
 				
-			target_anchor_pos = hit_pos
-			is_grappling = true
-			grapple_fired.emit(target_anchor_pos)
-			grapple_latched.emit(target_anchor_pos, is_target_heavy)
-			return true
+				if collider is RigidBody3D:
+					target_rigid_body = collider as RigidBody3D
+					target_node = target_rigid_body
+					local_hit_offset = target_rigid_body.global_transform.affine_inverse() * hit_pos
+					is_target_heavy = target_rigid_body.mass > 80.0
+				elif collider is Node3D:
+					target_rigid_body = null
+					target_node = collider as Node3D
+					local_hit_offset = target_node.global_transform.affine_inverse() * hit_pos
+					is_target_heavy = true
+				else:
+					target_rigid_body = null
+					target_node = null
+					target_anchor_pos = hit_pos
+					is_target_heavy = true
+					
+				target_anchor_pos = hit_pos
+				is_grappling = true
+				grapple_fired.emit(target_anchor_pos)
+				grapple_latched.emit(target_anchor_pos, is_target_heavy)
+				return true
 	
 	return false
 

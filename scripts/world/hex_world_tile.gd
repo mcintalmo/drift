@@ -503,11 +503,13 @@ func _spawn_glacial_boulder(rng: RandomNumberGenerator) -> void:
 	boulder.add_child(col)
 	
 	add_child(boulder)
+	boulder.add_to_group(&"boulders")
 	_spawned_props.append(boulder)
 
 func _spawn_petrified_pine(rng: RandomNumberGenerator) -> void:
 	var tree: StaticBody3D = StaticBody3D.new()
 	tree.name = "PetrifiedPine"
+	tree.add_to_group(&"trees")
 	var tx: float = rng.randf_range(-2.5, 2.5)
 	var tz: float = rng.randf_range(-2.5, 2.5)
 	tree.position = Vector3(tx, 0, tz)

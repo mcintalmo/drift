@@ -10,6 +10,7 @@ func run_tests() -> Array[Dictionary]:
 	var results: Array[Dictionary] = []
 	results.append(_test_train_car_initial_coupled_state())
 	results.append(_test_train_car_uncoupling_cascades_to_trailing_cars())
+	results.append(_test_hitch_uncoupling_cascades_to_trailing_hitches_and_cars())
 	results.append(_test_decoupled_car_decelerates())
 	results.append(_test_train_spline_path_following())
 	results.append(_test_boxcar_plasma_breach_sliding_doors())
@@ -54,6 +55,48 @@ func _test_train_car_uncoupling_cascades_to_trailing_cars() -> Dictionary:
 		"name": "test_train_car_uncoupling_cascades_to_trailing_cars",
 		"passed": passed,
 		"message": "Uncoupling mid car cascaded to rear car while lead car remained coupled"
+	}
+
+func _test_hitch_uncoupling_cascades_to_trailing_hitches_and_cars() -> Dictionary:
+	var train: MovingTrain = MovingTrainClass.new()
+	var loco: TrainCar = TrainCarClass.new()
+	var car1: TrainCar = TrainCarClass.new()
+	var car2: TrainCar = TrainCarClass.new()
+	
+	var hitch0: TrainCar = TrainCarClass.new()
+	var hitch1: TrainCar = TrainCarClass.new()
+	var hitch2: TrainCar = TrainCarClass.new()
+	
+	var curve: Curve3D = Curve3D.new()
+	curve.add_point(Vector3(0, 0, 0))
+	curve.add_point(Vector3(200, 0, 0))
+	
+	train.initialize_train_on_path(curve, [loco, car1, car2], [hitch0, hitch1, hitch2])
+	
+	# Sever Hitch 0 (between loco and car1)
+	hitch0.uncouple_car()
+	
+	var passed: bool = (
+		loco.is_coupled == true and
+		car1.is_coupled == false and
+		car2.is_coupled == false and
+		hitch0.is_coupled == false and
+		hitch1.is_coupled == false and
+		hitch2.is_coupled == false
+	)
+	
+	loco.free()
+	car1.free()
+	car2.free()
+	hitch0.free()
+	hitch1.free()
+	hitch2.free()
+	train.free()
+	
+	return {
+		"name": "test_hitch_uncoupling_cascades_to_trailing_hitches_and_cars",
+		"passed": passed,
+		"message": "Uncoupling hitch #0 successfully uncoupled trailing cars [1, 2] and trailing hitches [0, 1, 2]"
 	}
 
 func _test_decoupled_car_decelerates() -> Dictionary:

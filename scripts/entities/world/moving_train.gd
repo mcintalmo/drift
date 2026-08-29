@@ -83,14 +83,29 @@ func _link_cars() -> void:
 					trailing.append(train_cars[j])
 			car.trailing_cars = trailing
 			car.decoupled.connect(func(c_idx: int) -> void:
+				_handle_car_or_hitch_decoupled(c_idx)
 				car_decoupled.emit(c_idx)
 			)
 			
-	for hitch: TrainCar in hitch_platforms:
+	for i: int in range(hitch_platforms.size()):
+		var hitch: TrainCar = hitch_platforms[i]
 		if is_instance_valid(hitch):
+			hitch.car_index = i
 			hitch.decoupled.connect(func(c_idx: int) -> void:
+				_handle_car_or_hitch_decoupled(c_idx)
 				car_decoupled.emit(c_idx)
 			)
+
+func _handle_car_or_hitch_decoupled(from_index: int) -> void:
+	# 1. Uncouple trailing cars (from_index + 1 onward)
+	for j: int in range(from_index + 1, train_cars.size()):
+		if is_instance_valid(train_cars[j]) and train_cars[j].is_coupled:
+			train_cars[j].uncouple_car()
+			
+	# 2. Uncouple trailing hitch platforms (from_index onward)
+	for j: int in range(from_index, hitch_platforms.size()):
+		if is_instance_valid(hitch_platforms[j]) and hitch_platforms[j].is_coupled:
+			hitch_platforms[j].uncouple_car()
 
 func _physics_process(delta: float) -> void:
 	if not curve_3d or has_escaped:

@@ -112,23 +112,62 @@ func _init() -> void:
 			str(board_impulse), str(not pilot_grapple.is_grappling)
 		])
 		
-	print("[7/7] Testing Precision Breaching of Boxcar Magnetic Door Lock & Remote Detach...")
-	print("  [OK] Boxcar 1 Initial Doors Locked: %s" % str(boxcar1.doors_locked))
+	print("[7/7] Testing 6-Step Infiltration: Decouple -> Unlock Doors -> Enter Cabin -> Unlock Crate -> Loot...")
+	var hitch0: TrainCar = train.hitch_platforms[0] if not train.hitch_platforms.is_empty() else null
+	var crate1: GroundCrate = boxcar1.get_node_or_null("VaultCrate1") as GroundCrate
+	
+	# Check gating: Cannot access crate while on roof / coupled / doors locked
+	var roof_access_denied: bool = not crate1.can_player_access_crate(pilot)
+	print("  [OK] Crate access denied while coupled/on roof: %s" % str(roof_access_denied))
+	
+	# Step 1: Disconnect train
+	if hitch0:
+		hitch0.uncouple_car()
+	print("  [OK] Boxcar 1 Decoupled: %s" % str(not boxcar1.is_coupled))
+	
+	# Step 2 & 3: Unlock sliding doors & slide open
 	boxcar1.breach_doors()
-	print("  [OK] Boxcar 1 Post-Breach Doors Locked: %s" % str(boxcar1.doors_locked))
+	print("  [OK] Boxcar 1 Doors Unlocked & Open: %s" % str(not boxcar1.doors_locked))
+	
+	# Step 4: Enter the car
+	if boxcar1.is_inside_tree() and pilot.is_inside_tree():
+		pilot.global_position = boxcar1.to_global(Vector3(0, 0.6, 0))
+	else:
+		pilot.position = boxcar1.position + Vector3(0, 0.6, 0)
+	var inside_access_allowed: bool = crate1.can_player_access_crate(pilot)
+	print("  [OK] Crate access allowed once inside car cabin: %s" % str(inside_access_allowed))
+	
+	# Step 5 & 6: Unlock and loot crate inside car
+	var crate_state: Dictionary = {"opened": false}
+	crate1.interact_loot(pilot, null, func() -> void:
+		crate_state["opened"] = true
+	)
+	print("  [OK] Internal Vault Crate Breached & Looted: %s (is_locked: %s)" % [
+		str(crate_state["opened"]), str(crate1.is_locked)
+	])
 	
 	sled_winch.detach_tether()
 	print("  [OK] Sled Winch Remote Detached: %s" % str(not sled_winch.is_tethered))
 	
-	if track_len > 800.0 and props_on_rail_found == 0 and train_speed > 0.0 and boarded_roof and not boxcar1.doors_locked and not sled_winch.is_tethered:
+	var all_passed: bool = (
+		track_len > 800.0 and
+		props_on_rail_found == 0 and
+		train_speed > 0.0 and
+		boarded_roof and
+		not boxcar1.is_coupled and
+		not boxcar1.doors_locked and
+		inside_access_allowed and
+		crate_state["opened"] and
+		not sled_winch.is_tethered
+	)
+	
+	if all_passed:
 		print("\n==========================================================")
 		print("  ALL ACTIVE TRAIN HEIST & BOARDING SIMULATIONS PASSED!  ")
 		print("==========================================================")
 		heist_world.queue_free()
 		quit(0)
 	else:
-		printerr("[FAIL] Heist assertions failed! (track_len=%.1f, props=%d, speed=%.1f, boarded=%s)" % [
-			track_len, props_on_rail_found, train_speed, str(boarded_roof)
-		])
+		printerr("[FAIL] Heist assertions failed!")
 		heist_world.queue_free()
 		quit(1)

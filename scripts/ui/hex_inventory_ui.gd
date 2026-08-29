@@ -231,7 +231,7 @@ func _discover_scene_inventories() -> void:
 		for c: Node in all_crates:
 			if c is GroundCrate and is_instance_valid(c):
 				var crate: GroundCrate = c as GroundCrate
-				if crate.global_position.distance_to(pilot.global_position) <= 4.5:
+				if crate.can_player_access_crate(pilot) and crate.global_position.distance_to(pilot.global_position) <= 4.5:
 					if not crate.is_locked:
 						crate_inventory = crate.get_node_or_null("HexInventoryComponent") as HexInventoryComponent
 						break

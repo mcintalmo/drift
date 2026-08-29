@@ -32,8 +32,39 @@ func _ready() -> void:
 	
 	_populate_loot()
 
+## Checks if the player is in physical position to access this crate (inside boxcar or on ground)
+func can_player_access_crate(player: Node3D) -> bool:
+	var parent_car: TrainCar = get_parent() as TrainCar if get_parent() is TrainCar else null
+	if parent_car:
+		if not player:
+			return false
+		# Boxcar crates cannot be accessed until:
+		# 1. Train car has been decoupled
+		if parent_car.is_coupled:
+			return false
+		# 2. Sliding doors have been breached/opened
+		if parent_car.doors_locked:
+			return false
+		# 3. Player is physically inside the train car cargo hold (not on the roof)
+		var p_pos: Vector3 = player.global_position if player.is_inside_tree() else player.position
+		var car_xf: Transform3D = parent_car.global_transform if parent_car.is_inside_tree() else parent_car.transform
+		var p_local: Vector3 = car_xf.affine_inverse() * p_pos
+		var is_inside_cabin: bool = (
+			absf(p_local.x) <= 2.2 and
+			absf(p_local.z) <= 5.0 and
+			p_local.y >= 0.1 and
+			p_local.y <= 3.4
+		)
+		if not is_inside_cabin:
+			return false
+			
+	return true
+
 ## Handles player hold-to-interact looting and unlocking channel
 func interact_loot(player: Node3D, donut: Node, on_open_inventory: Callable) -> void:
+	if not can_player_access_crate(player):
+		return
+		
 	if not is_locked:
 		# Unlocked crate: quick 0.35s channel to open inventory screen
 		if donut and donut.has_method("start_channel"):
@@ -99,11 +130,16 @@ func _on_lock_breached() -> void:
 		hurtbox.is_invulnerable = true
 	
 	# Smoothly rotate lid open
-	if lid_mesh:
+	if lid_mesh and is_inside_tree():
 		var tw: Tween = create_tween()
-		tw.tween_property(lid_mesh, "rotation_degrees:x", -65.0, 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		tw.parallel().tween_property(lid_mesh, "position:y", 1.25, 0.4)
-		tw.parallel().tween_property(lid_mesh, "position:z", -0.35, 0.4)
+		if tw:
+			tw.tween_property(lid_mesh, "rotation_degrees:x", -65.0, 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw.parallel().tween_property(lid_mesh, "position:y", 1.25, 0.4)
+			tw.parallel().tween_property(lid_mesh, "position:z", -0.35, 0.4)
+	elif lid_mesh:
+		lid_mesh.rotation_degrees.x = -65.0
+		lid_mesh.position.y = 1.25
+		lid_mesh.position.z = -0.35
 	
 	# Turn lock light green
 	if lock_mesh:

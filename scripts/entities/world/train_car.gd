@@ -92,19 +92,27 @@ func interact_plasma_torch(player: Node3D, donut: Node) -> void:
 	if not doors_locked:
 		return
 		
+	# Requirement: Train car must be decoupled from locomotive before sliding doors can be unlocked
+	if is_coupled:
+		if player and player.is_inside_tree():
+			var huds: Array[Node] = player.get_tree().root.find_children("*HUD*", "HUD", true, false)
+			if not huds.is_empty() and huds[0].has_method("show_banner"):
+				huds[0].call("show_banner", "CAR MUST BE DECOUPLED FROM TRAIN FIRST!")
+		return
+		
 	if donut and donut.has_method("start_channel"):
 		door_breach_started.emit()
 		donut.start_channel(
-			"Cutting Magnetic Door Lock...",
-			2.5,
+			"Unlocking Sliding Door...",
+			1.5,
 			func() -> void:
 				breach_doors()
 				door_breach_completed.emit(),
 			func() -> void:
 				pass, # Cancelled
-			lock_vis if lock_vis else self,
+			lock_vis if lock_vis else left_door if left_door else self,
 			player,
-			4.0
+			4.5
 		)
 	else:
 		breach_doors()

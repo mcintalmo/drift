@@ -191,8 +191,8 @@ func _get_riding_train_car() -> TrainCar:
 		if node is TrainCar and node.visible:
 			var car: TrainCar = node as TrainCar
 			var local_pos: Vector3 = car.global_transform.affine_inverse() * pilot.global_position
-			# Boxcar bounds: X in [-1.8, 1.8], Z in [-4.5, 4.5], Y in [1.8, 4.6] (roof standing)
-			if absf(local_pos.x) <= 1.8 and absf(local_pos.z) <= 4.5 and local_pos.y >= 1.8 and local_pos.y <= 4.6:
+			# Train car bounds: X in [-1.8, 1.8], Z in [-4.8, 4.8], Y in [0.5, 4.8] (roof + lowered hitch platforms)
+			if absf(local_pos.x) <= 1.8 and absf(local_pos.z) <= 4.8 and local_pos.y >= 0.5 and local_pos.y <= 4.8:
 				return car
 				
 	return null

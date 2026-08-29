@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://df5m2lap87q1"]
+[gd_scene load_steps=18 format=3 uid="uid://df5m2lap87q1"]
 
 [ext_resource type="Script" path="res://scripts/entities/world/train_car.gd" id="1_train_car"]
 [ext_resource type="Script" path="res://scripts/components/health_component.gd" id="2_health"]
@@ -6,7 +6,10 @@
 [ext_resource type="Script" path="res://scripts/components/grapple_anchor_component.gd" id="4_anchor"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_loco"]
-size = Vector3(3.4, 4.0, 9.2)
+size = Vector3(3.4, 4.0, 7.6)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_rear_hitch"]
+size = Vector3(2.8, 0.25, 1.6)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hull"]
 albedo_color = Color(0.22, 0.28, 0.25, 1)
@@ -15,7 +18,25 @@ roughness = 0.35
 
 [sub_resource type="BoxMesh" id="BoxMesh_body"]
 material = SubResource("StandardMaterial3D_hull")
-size = Vector3(3.2, 3.2, 8.8)
+size = Vector3(3.2, 3.2, 7.6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_grate"]
+albedo_color = Color(0.2, 0.23, 0.26, 1)
+metallic = 0.85
+roughness = 0.35
+
+[sub_resource type="BoxMesh" id="BoxMesh_platform_grate"]
+material = SubResource("StandardMaterial3D_grate")
+size = Vector3(2.8, 0.15, 1.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_railing"]
+albedo_color = Color(0.85, 0.65, 0.15, 1)
+metallic = 0.8
+roughness = 0.4
+
+[sub_resource type="BoxMesh" id="BoxMesh_railing"]
+material = SubResource("StandardMaterial3D_railing")
+size = Vector3(0.08, 0.85, 1.5)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_plow"]
 albedo_color = Color(0.18, 0.20, 0.22, 1)
@@ -45,10 +66,10 @@ emission_energy_multiplier = 4.0
 
 [sub_resource type="BoxMesh" id="BoxMesh_coupler"]
 material = SubResource("StandardMaterial3D_coupler")
-size = Vector3(0.5, 0.4, 0.6)
+size = Vector3(0.7, 0.5, 0.8)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_coupler_col"]
-size = Vector3(0.8, 0.8, 0.8)
+size = Vector3(1.2, 1.0, 1.2)
 
 [node name="ArmoredLocomotive" type="AnimatableBody3D" groups=["train_convoy"]]
 collision_layer = 1
@@ -59,14 +80,30 @@ car_width_m = 3.4
 car_height_m = 4.0
 
 [node name="LocoCollision" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.0, -0.4)
 shape = SubResource("BoxShape3D_loco")
+
+[node name="RearHitchCollision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 4.3)
+shape = SubResource("BoxShape3D_rear_hitch")
 
 [node name="VisualModel" type="Node3D" parent="."]
 
 [node name="BodyMesh" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, -0.4)
 mesh = SubResource("BoxMesh_body")
+
+[node name="RearHitchPlatformMesh" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 4.3)
+mesh = SubResource("BoxMesh_platform_grate")
+
+[node name="RearRailingLeft" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.35, 1.2, 4.3)
+mesh = SubResource("BoxMesh_railing")
+
+[node name="RearRailingRight" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.35, 1.2, 4.3)
+mesh = SubResource("BoxMesh_railing")
 
 [node name="PlowMesh" type="MeshInstance3D" parent="VisualModel"]
 transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0.9, -4.6)
@@ -88,7 +125,7 @@ spot_range = 65.0
 spot_angle = 38.0
 
 [node name="CouplerVisual" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 4.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 4.4)
 mesh = SubResource("BoxMesh_coupler")
 
 [node name="CouplerHealthComponent" type="Node" parent="."]
@@ -96,7 +133,7 @@ script = ExtResource("2_health")
 max_health = 100.0
 
 [node name="CouplerHurtbox" type="Area3D" parent="." node_paths=PackedStringArray("health_component")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 4.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 4.4)
 collision_layer = 16
 collision_mask = 8
 script = ExtResource("3_hurtbox")
@@ -113,7 +150,7 @@ anchor_type = 2
 is_roof_boarding_anchor = true
 
 [node name="CouplerGrappleAnchor" type="Node3D" parent="." groups=["grapple_anchors"]]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 4.6)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 4.4)
 script = ExtResource("4_anchor")
 anchor_type = 2
 is_roof_boarding_anchor = false

@@ -137,8 +137,8 @@ func _update_car_positions(_delta: float) -> void:
 		if car_dir.length_squared() < 0.01:
 			car_dir = Vector3.FORWARD
 			
-		var rot_y: float = atan2(car_dir.x, car_dir.z)
-		var pitch_x: float = -asin(clampf(car_dir.y, -0.9, 0.9))
+		var rot_y: float = atan2(-car_dir.x, -car_dir.z)
+		var pitch_x: float = asin(clampf(car_dir.y, -0.9, 0.9))
 		
 		var is_car_active: bool = (target_s >= -4.5) and (target_s <= total_track_length_m + 4.5)
 		car.visible = is_car_active

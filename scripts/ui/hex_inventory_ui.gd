@@ -380,8 +380,9 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 	if not tab_bar:
 		return
 		
-	# Clear existing tab buttons
+	# Clear existing tab buttons immediately
 	for child: Node in tab_bar.get_children():
+		tab_bar.remove_child(child)
 		child.queue_free()
 		
 	var active_type: ContainerType = left_container_type if is_left else right_container_type
@@ -404,8 +405,11 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 		btn.custom_minimum_size = Vector2(0, 26)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.text = _format_crate_tab_name(crate, i)
+		btn.focus_mode = Control.FOCUS_NONE
 		
 		btn.add_theme_stylebox_override(&"normal", active_tab_style if is_this_active else inactive_tab_style)
+		btn.add_theme_stylebox_override(&"hover", active_tab_style if is_this_active else inactive_tab_style)
+		btn.add_theme_stylebox_override(&"pressed", active_tab_style)
 		
 		var target_idx: int = i
 		if is_left:
@@ -422,7 +426,10 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 		bp_btn.custom_minimum_size = Vector2(0, 26)
 		bp_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		bp_btn.text = "Backpack"
+		bp_btn.focus_mode = Control.FOCUS_NONE
 		bp_btn.add_theme_stylebox_override(&"normal", active_tab_style if is_backpack_active else inactive_tab_style)
+		bp_btn.add_theme_stylebox_override(&"hover", active_tab_style if is_backpack_active else inactive_tab_style)
+		bp_btn.add_theme_stylebox_override(&"pressed", active_tab_style)
 		if is_left:
 			bp_btn.pressed.connect(func() -> void: _set_left_container(ContainerType.PILOT_BACKPACK))
 		else:
@@ -437,7 +444,10 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 		sled_btn.custom_minimum_size = Vector2(0, 26)
 		sled_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		sled_btn.text = "Sled"
+		sled_btn.focus_mode = Control.FOCUS_NONE
 		sled_btn.add_theme_stylebox_override(&"normal", active_tab_style if is_sled_active else inactive_tab_style)
+		sled_btn.add_theme_stylebox_override(&"hover", active_tab_style if is_sled_active else inactive_tab_style)
+		sled_btn.add_theme_stylebox_override(&"pressed", active_tab_style)
 		if is_left:
 			sled_btn.pressed.connect(func() -> void: _set_left_container(ContainerType.SLED_CARGO_POD))
 		else:

@@ -116,9 +116,9 @@ func _init() -> void:
 	var hitch0: TrainCar = train.hitch_platforms[0] if not train.hitch_platforms.is_empty() else null
 	var crate1: GroundCrate = boxcar1.get_node_or_null("VaultCrate1") as GroundCrate
 	
-	# Check gating: Cannot access crate while on roof / coupled / doors locked
-	var roof_access_denied: bool = not crate1.can_player_access_crate(pilot)
-	print("  [OK] Crate access denied while coupled/on roof: %s" % str(roof_access_denied))
+	# Initial Boxcar and Crate State Check
+	var initial_crate_non_interactable: bool = (crate1.crate_state == GroundCrate.CrateState.NON_INTERACTABLE)
+	print("  [OK] Crate initial state is NON_INTERACTABLE inside locked car: %s" % str(initial_crate_non_interactable))
 	
 	# Step 1: Disconnect train
 	if hitch0:
@@ -127,23 +127,26 @@ func _init() -> void:
 	
 	# Step 2 & 3: Unlock sliding doors & slide open
 	boxcar1.breach_doors()
-	print("  [OK] Boxcar 1 Doors Unlocked & Open: %s" % str(not boxcar1.doors_locked))
+	var boxcar_unlocked: bool = (boxcar1.car_state == TrainCar.CarState.UNLOCKED)
+	var crate_now_locked: bool = (crate1.crate_state == GroundCrate.CrateState.LOCKED)
+	print("  [OK] Boxcar 1 Doors Unlocked (%s) & Crate transitioned to LOCKED (%s)" % [
+		str(boxcar_unlocked), str(crate_now_locked)
+	])
 	
 	# Step 4: Enter the car
 	if boxcar1.is_inside_tree() and pilot.is_inside_tree():
 		pilot.global_position = boxcar1.to_global(Vector3(0, 0.6, 0))
 	else:
 		pilot.position = boxcar1.position + Vector3(0, 0.6, 0)
-	var inside_access_allowed: bool = crate1.can_player_access_crate(pilot)
-	print("  [OK] Crate access allowed once inside car cabin: %s" % str(inside_access_allowed))
 	
 	# Step 5 & 6: Unlock and loot crate inside car
 	var crate_state: Dictionary = {"opened": false}
 	crate1.interact_loot(pilot, null, func() -> void:
 		crate_state["opened"] = true
 	)
-	print("  [OK] Internal Vault Crate Breached & Looted: %s (is_locked: %s)" % [
-		str(crate_state["opened"]), str(crate1.is_locked)
+	var crate_unlooted: bool = (crate1.crate_state == GroundCrate.CrateState.UNLOOTED)
+	print("  [OK] Internal Vault Crate Breached & Looted: %s (CrateState.UNLOOTED: %s)" % [
+		str(crate_state["opened"]), str(crate_unlooted)
 	])
 	
 	sled_winch.detach_tether()
@@ -155,8 +158,10 @@ func _init() -> void:
 		train_speed > 0.0 and
 		boarded_roof and
 		not boxcar1.is_coupled and
-		not boxcar1.doors_locked and
-		inside_access_allowed and
+		boxcar_unlocked and
+		initial_crate_non_interactable and
+		crate_now_locked and
+		crate_unlooted and
 		crate_state["opened"] and
 		not sled_winch.is_tethered
 	)

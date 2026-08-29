@@ -8,14 +8,25 @@ signal side_doors_breached
 signal door_breach_started
 signal door_breach_completed
 
+enum CarState {
+	LOCKED = 0,
+	UNLOCKED = 1
+}
+
+@export var car_state: CarState = CarState.LOCKED
 @export var car_index: int = 0
 @export var is_coupled: bool = true
 @export var coupler_health: float = 80.0
 @export var door_joint_health: float = 60.0
-@export var doors_locked: bool = true
 @export var car_length_m: float = 8.5
 @export var car_width_m: float = 3.2
 @export var car_height_m: float = 3.6
+
+var doors_locked: bool:
+	get:
+		return car_state == CarState.LOCKED
+	set(val):
+		set_car_state(CarState.LOCKED if val else CarState.UNLOCKED)
 
 var trailing_cars: Array[TrainCar] = []
 var forward_speed_ms: float = 0.0
@@ -61,6 +72,20 @@ func _ready() -> void:
 		door_health_comp.died.connect(breach_doors)
 		
 	_setup_geometry_if_missing()
+	_update_child_crates_state()
+
+func set_car_state(new_state: CarState) -> void:
+	car_state = new_state
+	_update_child_crates_state()
+
+func _update_child_crates_state() -> void:
+	for child: Node in find_children("*", "", true, false):
+		if child.has_method("set_crate_state"):
+			if car_state == CarState.LOCKED:
+				child.call("set_crate_state", 0) # CrateState.NON_INTERACTABLE
+			else:
+				if int(child.get("crate_state")) == 0:
+					child.call("set_crate_state", 1) # CrateState.LOCKED
 
 func _physics_process(delta: float) -> void:
 	if not is_coupled and forward_speed_ms > 0.0:
@@ -89,7 +114,7 @@ func set_platform_transform(new_pos: Vector3, new_rot: Vector3, delta: float) ->
 
 ## Precision Stealth Plasma Torch Channel (Continuous welding interaction)
 func interact_plasma_torch(player: Node3D, donut: Node) -> void:
-	if not doors_locked:
+	if car_state == CarState.UNLOCKED:
 		return
 		
 	# Requirement: Train car must be decoupled from locomotive before sliding doors can be unlocked
@@ -117,11 +142,11 @@ func interact_plasma_torch(player: Node3D, donut: Node) -> void:
 	else:
 		breach_doors()
 
-## Opens sliding boxcar side doors revealing the interior vault
+## Opens sliding boxcar side doors revealing the interior vault and unlocks child crates
 func breach_doors() -> void:
-	if not doors_locked:
+	if car_state == CarState.UNLOCKED:
 		return
-	doors_locked = false
+	set_car_state(CarState.UNLOCKED)
 	
 	if door_hurtbox:
 		door_hurtbox.is_invulnerable = true
@@ -133,10 +158,12 @@ func breach_doors() -> void:
 	# Slide Left & Right Doors Open
 	if left_door:
 		var tw_l: Tween = create_tween()
-		tw_l.tween_property(left_door, "position:z", left_door.position.z + 3.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		if tw_l:
+			tw_l.tween_property(left_door, "position:z", left_door.position.z + 3.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	if right_door:
 		var tw_r: Tween = create_tween()
-		tw_r.tween_property(right_door, "position:z", right_door.position.z - 3.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		if tw_r:
+			tw_r.tween_property(right_door, "position:z", right_door.position.z - 3.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		
 	# Turn lock light green
 	if lock_vis:

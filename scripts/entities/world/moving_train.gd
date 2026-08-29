@@ -52,6 +52,9 @@ func initialize_train_on_path(path_curve: Curve3D, cars: Array = [], hitches: Ar
 		_auto_spawn_hitch_platforms_if_needed()
 		
 	_link_cars()
+	for car: TrainCar in train_cars:
+		if is_instance_valid(car):
+			car._update_child_crates_state()
 	_update_car_positions(0.0)
 
 func _auto_spawn_hitch_platforms_if_needed() -> void:

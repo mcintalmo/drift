@@ -7,12 +7,35 @@ signal crate_opened
 signal lock_damaged(current_lock_hp: float)
 signal loot_search_started
 signal loot_search_completed
+signal crate_state_changed(new_state: CrateState)
 
-@export var is_locked: bool = true
-@export var is_searched: bool = false
+enum CrateState {
+	NON_INTERACTABLE = 0,
+	LOCKED = 1,
+	UNLOOTED = 2
+}
+
+@export var crate_state: CrateState = CrateState.LOCKED
 @export var search_duration: float = 1.2
 @export var lock_health: float = 60.0
 @export var crate_variant: int = 1
+
+var is_locked: bool:
+	get:
+		return crate_state != CrateState.UNLOOTED
+	set(val):
+		if not val:
+			set_crate_state(CrateState.UNLOOTED)
+		else:
+			if crate_state == CrateState.UNLOOTED:
+				set_crate_state(CrateState.LOCKED)
+
+var is_searched: bool:
+	get:
+		return crate_state == CrateState.UNLOOTED
+	set(val):
+		if val:
+			set_crate_state(CrateState.UNLOOTED)
 
 @onready var inventory: HexInventoryComponent = $HexInventoryComponent
 @onready var hurtbox: HurtboxComponent = $HurtboxComponent
@@ -31,47 +54,81 @@ func _ready() -> void:
 		lock_health_component.died.connect(_on_lock_breached)
 	
 	_populate_loot()
+	
+	# If parent is a locked train car, initialize in NON_INTERACTABLE state
+	var parent_node: Node = get_parent()
+	if parent_node and parent_node.get("car_state") != null:
+		if int(parent_node.get("car_state")) == 0: # CarState.LOCKED
+			set_crate_state(CrateState.NON_INTERACTABLE)
+		else:
+			set_crate_state(CrateState.LOCKED)
+	else:
+		set_crate_state(crate_state)
 
-## Checks if the player is in physical position to access this crate (inside boxcar or on ground)
-func can_player_access_crate(player: Node3D) -> bool:
-	var parent_car: TrainCar = get_parent() as TrainCar if get_parent() is TrainCar else null
-	if parent_car:
-		if not player:
-			return false
-		# Boxcar crates cannot be accessed until:
-		# 1. Train car has been decoupled
-		if parent_car.is_coupled:
-			return false
-		# 2. Sliding doors have been breached/opened
-		if parent_car.doors_locked:
-			return false
-		# 3. Player is physically inside the train car cargo hold (not on the roof)
-		var p_pos: Vector3 = player.global_position if player.is_inside_tree() else player.position
-		var car_xf: Transform3D = parent_car.global_transform if parent_car.is_inside_tree() else parent_car.transform
-		var p_local: Vector3 = car_xf.affine_inverse() * p_pos
-		var is_inside_cabin: bool = (
-			absf(p_local.x) <= 2.2 and
-			absf(p_local.z) <= 5.0 and
-			p_local.y >= 0.1 and
-			p_local.y <= 3.4
-		)
-		if not is_inside_cabin:
-			return false
-			
-	return true
+## Updates crate state and synchronizes visuals, physics, and interactions
+func set_crate_state(new_state: CrateState) -> void:
+	crate_state = new_state
+	
+	match crate_state:
+		CrateState.NON_INTERACTABLE:
+			if hurtbox:
+				hurtbox.is_invulnerable = true
+			if lock_mesh:
+				# Dim lock in non-interactable mode
+				var mat: StandardMaterial3D = StandardMaterial3D.new()
+				mat.albedo_color = Color(0.15, 0.15, 0.15, 1.0)
+				mat.emission_enabled = false
+				lock_mesh.material_override = mat
+				
+		CrateState.LOCKED:
+			if hurtbox:
+				hurtbox.is_invulnerable = false
+			if lock_mesh:
+				# Active red magnetic lock
+				var mat: StandardMaterial3D = StandardMaterial3D.new()
+				mat.albedo_color = Color(0.95, 0.2, 0.1, 1.0)
+				mat.emission_enabled = true
+				mat.emission = Color(1.0, 0.2, 0.1, 1.0)
+				mat.emission_energy_multiplier = 4.0
+				lock_mesh.material_override = mat
+				
+		CrateState.UNLOOTED:
+			if hurtbox:
+				hurtbox.is_invulnerable = true
+			if lock_mesh:
+				# Unlocked green lock
+				var mat: StandardMaterial3D = StandardMaterial3D.new()
+				mat.albedo_color = Color(0.2, 0.9, 0.3, 1.0)
+				mat.emission_enabled = true
+				mat.emission = Color(0.3, 1.0, 0.4, 1.0)
+				mat.emission_energy_multiplier = 4.0
+				lock_mesh.material_override = mat
+			if lid_mesh:
+				if is_inside_tree():
+					var tw: Tween = create_tween()
+					if tw:
+						tw.tween_property(lid_mesh, "rotation_degrees:x", -65.0, 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+						tw.parallel().tween_property(lid_mesh, "position:y", 1.25, 0.4)
+						tw.parallel().tween_property(lid_mesh, "position:z", -0.35, 0.4)
+				else:
+					lid_mesh.rotation_degrees.x = -65.0
+					lid_mesh.position.y = 1.25
+					lid_mesh.position.z = -0.35
+					
+	crate_state_changed.emit(crate_state)
 
-## Handles player hold-to-interact looting and unlocking channel
+## Handles player hold-to-interact looting and unlocking channel based on state machine
 func interact_loot(player: Node3D, donut: Node, on_open_inventory: Callable) -> void:
-	if not can_player_access_crate(player):
+	if crate_state == CrateState.NON_INTERACTABLE:
 		return
 		
-	if not is_locked:
-		# Unlocked crate: quick 0.35s channel to open inventory screen
+	if crate_state == CrateState.UNLOOTED:
+		# In UNLOOTED state: quick channel to open inventory screen
 		if donut and donut.has_method("start_channel"):
 			loot_search_started.emit()
 			donut.start_channel(
 				"Opening Cargo Crate...",
-				0.35,
+				0.25,
 				func() -> void:
 					loot_search_completed.emit()
 					if on_open_inventory.is_valid():
@@ -87,14 +144,16 @@ func interact_loot(player: Node3D, donut: Node, on_open_inventory: Callable) -> 
 				on_open_inventory.call()
 		return
 		
+	# In LOCKED state: 1.2s channel to unlock -> transitions to UNLOOTED
 	if donut and donut.has_method("start_channel"):
 		loot_search_started.emit()
 		donut.start_channel(
 			"Unlocking Crate...",
 			search_duration,
 			func() -> void:
-				is_searched = true
-				_on_lock_breached()
+				set_crate_state(CrateState.UNLOOTED)
+				crate_opened.emit()
+				GlobalEvents.emit_crate_breached(self)
 				loot_search_completed.emit()
 				if on_open_inventory.is_valid():
 					on_open_inventory.call(),
@@ -106,50 +165,27 @@ func interact_loot(player: Node3D, donut: Node, on_open_inventory: Callable) -> 
 		)
 	else:
 		# Fallback if no donut provided
-		is_searched = true
-		_on_lock_breached()
+		set_crate_state(CrateState.UNLOOTED)
+		crate_opened.emit()
+		GlobalEvents.emit_crate_breached(self)
+		loot_search_completed.emit()
 		if on_open_inventory.is_valid():
 			on_open_inventory.call()
 
 func _flash_damage() -> void:
-	if lock_mesh:
+	if lock_mesh and crate_state == CrateState.LOCKED:
 		var mat: StandardMaterial3D = lock_mesh.get_active_material(0) as StandardMaterial3D
 		if mat:
 			mat.emission_energy_multiplier = 10.0
 			get_tree().create_timer(0.08).timeout.connect(func() -> void:
 				if is_instance_valid(mat):
-					mat.emission_energy_multiplier = 3.0
+					mat.emission_energy_multiplier = 4.0
 			)
 
 func _on_lock_breached() -> void:
-	if not is_locked:
+	if crate_state == CrateState.UNLOOTED:
 		return
-	is_locked = false
-	is_searched = true
-	if hurtbox:
-		hurtbox.is_invulnerable = true
-	
-	# Smoothly rotate lid open
-	if lid_mesh and is_inside_tree():
-		var tw: Tween = create_tween()
-		if tw:
-			tw.tween_property(lid_mesh, "rotation_degrees:x", -65.0, 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-			tw.parallel().tween_property(lid_mesh, "position:y", 1.25, 0.4)
-			tw.parallel().tween_property(lid_mesh, "position:z", -0.35, 0.4)
-	elif lid_mesh:
-		lid_mesh.rotation_degrees.x = -65.0
-		lid_mesh.position.y = 1.25
-		lid_mesh.position.z = -0.35
-	
-	# Turn lock light green
-	if lock_mesh:
-		var mat: StandardMaterial3D = StandardMaterial3D.new()
-		mat.albedo_color = Color(0.2, 0.9, 0.3, 1)
-		mat.emission_enabled = true
-		mat.emission = Color(0.3, 1.0, 0.4, 1)
-		mat.emission_energy_multiplier = 4.0
-		lock_mesh.material_override = mat
-	
+	set_crate_state(CrateState.UNLOOTED)
 	crate_opened.emit()
 	GlobalEvents.emit_crate_breached(self)
 

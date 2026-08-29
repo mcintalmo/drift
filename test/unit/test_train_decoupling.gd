@@ -15,6 +15,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_train_spline_path_following())
 	results.append(_test_boxcar_plasma_breach_sliding_doors())
 	results.append(_test_first_time_container_looting_channel())
+	results.append(_test_crate_and_car_state_machines())
 	return results
 
 func _test_train_car_initial_coupled_state() -> Dictionary:
@@ -184,4 +185,57 @@ func _test_first_time_container_looting_channel() -> Dictionary:
 		"name": "test_first_time_container_looting_channel",
 		"passed": passed,
 		"message": msg
+	}
+
+func _test_crate_and_car_state_machines() -> Dictionary:
+	var car: TrainCar = TrainCarClass.new()
+	var crate: GroundCrate = GroundCrateClass.new()
+	crate.name = "VaultCrate1"
+	car.add_child(crate)
+	
+	# Initial car state: LOCKED
+	car.car_state = TrainCar.CarState.LOCKED
+	car._update_child_crates_state()
+	
+	var initial_crate_non_interactable: bool = (crate.crate_state == GroundCrate.CrateState.NON_INTERACTABLE)
+	
+	# Interaction in NON_INTERACTABLE state should be ignored
+	var flags: Dictionary = {"interact": false, "unlock": false, "open_inv": false}
+	crate.interact_loot(null, null, func() -> void:
+		flags["interact"] = true
+	)
+	var non_interactable_passed: bool = not flags["interact"] and (crate.crate_state == GroundCrate.CrateState.NON_INTERACTABLE)
+	
+	# Unlock the car (breach doors)
+	car.breach_doors()
+	var car_unlocked: bool = (car.car_state == TrainCar.CarState.UNLOCKED)
+	var crate_now_locked: bool = (crate.crate_state == GroundCrate.CrateState.LOCKED)
+	
+	# Interacting with LOCKED crate transitions it to UNLOOTED
+	crate.interact_loot(null, null, func() -> void:
+		flags["unlock"] = true
+	)
+	var crate_now_unlooted: bool = (crate.crate_state == GroundCrate.CrateState.UNLOOTED) and flags["unlock"]
+	
+	# Interacting with UNLOOTED crate opens inventory directly
+	crate.interact_loot(null, null, func() -> void:
+		flags["open_inv"] = true
+	)
+	var open_inv_called: bool = flags["open_inv"]
+	
+	var passed: bool = (
+		initial_crate_non_interactable and
+		non_interactable_passed and
+		car_unlocked and
+		crate_now_locked and
+		crate_now_unlooted and
+		open_inv_called
+	)
+	
+	crate.free()
+	car.free()
+	return {
+		"name": "test_crate_and_car_state_machines",
+		"passed": passed,
+		"message": "CarState & CrateState machines verified: LockedCar->NonInteractable->UnlockedCar->LockedCrate->UnlootedCrate (passed: %s)" % str(passed)
 	}

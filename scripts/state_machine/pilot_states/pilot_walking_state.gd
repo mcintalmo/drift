@@ -191,15 +191,15 @@ func _find_nearby_interact_target() -> Node:
 	var min_dist: float = 4.5
 	var best_target: Node = null
 	
-	# 1. Prioritize nearby loot crates inside boxcar or on ground (only if accessible)
+	# 1. Prioritize nearby loot crates inside boxcar or on ground (only if interactable)
 	var crates: Array[Node] = pilot.get_tree().get_nodes_in_group(&"loot_crates")
 	for c_node: Node in crates:
 		if is_instance_valid(c_node) and c_node is GroundCrate:
 			var crate: GroundCrate = c_node as GroundCrate
-			if crate.can_player_access_crate(pilot):
+			if crate.crate_state != GroundCrate.CrateState.NON_INTERACTABLE:
 				var c_pos: Vector3 = crate.global_position if crate.is_inside_tree() else crate.position
 				var dist: float = p_pos.distance_to(c_pos)
-				if dist < 3.2 and dist < min_dist:
+				if dist < 3.5 and dist < min_dist:
 					min_dist = dist
 					best_target = crate
 				

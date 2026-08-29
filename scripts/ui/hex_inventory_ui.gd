@@ -257,8 +257,8 @@ func _discover_scene_inventories() -> void:
 		for c: Node in crate_candidates:
 			if c is GroundCrate and is_instance_valid(c):
 				var crate: GroundCrate = c as GroundCrate
-				# Skip only NON_INTERACTABLE crates (e.g. inside locked sealed boxcars)
-				if crate.crate_state == GroundCrate.CrateState.NON_INTERACTABLE:
+				# Only include breached / unlocked crates (UNLOOTED) in UI tabs
+				if crate.crate_state != GroundCrate.CrateState.UNLOOTED:
 					continue
 				if crate.global_position.distance_to(pilot.global_position) <= 8.0:
 					if not discovered_crates.has(crate):
@@ -288,6 +288,7 @@ func _discover_scene_inventories() -> void:
 
 func _on_crate_state_changed(_new_state: GroundCrate.CrateState) -> void:
 	if is_open:
+		_discover_scene_inventories()
 		_refresh_container_panels()
 
 func _are_containers_same(type_a: ContainerType, idx_a: int, type_b: ContainerType, idx_b: int) -> bool:
@@ -506,13 +507,6 @@ func _update_load_label(lbl: Label, inv: HexInventoryComponent, type: ContainerT
 			lbl.text = ""
 			return
 		if type == ContainerType.GROUND_CRATE:
-			var idx: int = selected_left_crate_idx if is_left else selected_right_crate_idx
-			if idx >= 0 and idx < discovered_crates.size():
-				var crate: GroundCrate = discovered_crates[idx]
-				if is_instance_valid(crate) and crate.crate_state == GroundCrate.CrateState.LOCKED:
-					lbl.text = "%s LOCKED - HOLD 'F' TO BREACH" % crate.name.to_upper()
-					lbl.add_theme_color_override(&"font_color", Color(1.0, 0.35, 0.3, 1.0))
-					return
 			lbl.text = "NO CRATE ATTACHED"
 			lbl.add_theme_color_override(&"font_color", Color(0.6, 0.6, 0.6, 0.8))
 		else:

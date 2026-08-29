@@ -363,7 +363,7 @@ func _test_single_crate_and_backpack_swapping() -> Dictionary:
 	
 	var crate1: GroundCrate = GroundCrate.new()
 	crate1.name = "GroundCrate1"
-	crate1.crate_state = GroundCrate.CrateState.LOCKED # Locked crate
+	crate1.crate_state = GroundCrate.CrateState.UNLOOTED # Breached/unlocked crate
 	ui.discovered_crates = [crate1]
 	
 	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
@@ -411,5 +411,5 @@ func _test_single_crate_and_backpack_swapping() -> Dictionary:
 	return {
 		"name": "test_single_crate_and_backpack_swapping",
 		"passed": passed,
-		"message": "Player with single crate (even locked) and backpack seamlessly switches and swaps between both containers"
+		"message": "Player with single breached crate and backpack seamlessly switches and swaps between both containers"
 	}

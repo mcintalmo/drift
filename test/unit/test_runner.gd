@@ -44,12 +44,15 @@ func _init() -> void:
 		
 		for res: Dictionary in results:
 			total_tests += 1
-			if res["passed"]:
+			var is_passed: bool = bool(res.get("passed", false))
+			var t_name: String = String(res.get("name", "Unknown"))
+			var t_msg: String = String(res.get("message", ""))
+			if is_passed:
 				passed_tests += 1
-				print("  [PASS] %s: %s" % [res["name"], res["message"]])
+				print("  [PASS] %s: %s" % [t_name, t_msg])
 			else:
 				failed_tests += 1
-				print("  [FAIL] %s: %s" % [res["name"], res["message"]])
+				print("  [FAIL] %s: %s (Raw dict: %s)" % [t_name, t_msg, str(res)])
 	
 	print("\n==================================================")
 	print("  TEST RESULTS: %d Passed, %d Failed, %d Total" % [passed_tests, failed_tests, total_tests])

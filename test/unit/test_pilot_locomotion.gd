@@ -177,12 +177,14 @@ func _test_pilot_grapple_roof_boarding_boost() -> Dictionary:
 		]
 	}
 
+const PilotWalkingStateClass = preload("res://scripts/state_machine/pilot_states/pilot_walking_state.gd")
+
 func _test_pilot_moving_train_roof_physics_coupling() -> Dictionary:
 	var car: TrainCar = TrainCar.new()
 	car.forward_speed_ms = 14.5
 	car.rotation = Vector3.ZERO
 	
-	var walk_state: PilotWalkingState = PilotWalkingState.new()
+	var walk_state: PilotWalkingState = PilotWalkingStateClass.new()
 	var extracted_vel: Vector3 = walk_state._extract_body_velocity(car)
 	
 	# Moving train velocity along forward vector -Z (0, 0, -14.5)

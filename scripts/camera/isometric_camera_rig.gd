@@ -253,6 +253,18 @@ func _collect_hit_mesh_instances(collider: Object, shape_id: int, out_meshes: Ar
 				if _is_mesh_eligible_for_occlusion(specific_mesh):
 					if not out_meshes.has(specific_mesh):
 						out_meshes.append(specific_mesh)
+						
+					# If this is a train car flank wall/doorway and doors are unlocked, also include the open sliding door
+					var car: Node = _find_parent_train_car(col_node)
+					if car and int(car.get("car_state")) == 1: # CarState.UNLOCKED
+						if shape_name.begins_with("Left"):
+							var l_door: MeshInstance3D = col_node.find_child("LeftSlidingDoor", true, false) as MeshInstance3D
+							if l_door and not out_meshes.has(l_door) and _is_mesh_eligible_for_occlusion(l_door):
+								out_meshes.append(l_door)
+						elif shape_name.begins_with("Right"):
+							var r_door: MeshInstance3D = col_node.find_child("RightSlidingDoor", true, false) as MeshInstance3D
+							if r_door and not out_meshes.has(r_door) and _is_mesh_eligible_for_occlusion(r_door):
+								out_meshes.append(r_door)
 					return
 	
 	# 2. Fallback: if no specific sub-mesh was mapped, collect from the root object (or HexWorldTile)

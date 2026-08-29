@@ -6,6 +6,8 @@ extends State
 @export var grapple: PilotGrappleComponent
 @export var weapon_socket: WeaponSocketComponent
 
+const TrainHitchPlatformClass = preload("res://scripts/entities/world/train_hitch_platform.gd")
+
 var _prev_riding_car: TrainCar = null
 
 func physics_update(delta: float) -> void:
@@ -262,29 +264,38 @@ func _get_riding_train_car() -> TrainCar:
 				if car:
 					return car
 					
-	# 2. Downward probe raycast (within 1.4m below feet)
+	# 2. Downward probe raycast (within 1.2m below feet)
 	var space_state: PhysicsDirectSpaceState3D = pilot.get_world_3d().direct_space_state
 	if space_state:
 		var start: Vector3 = pilot.global_position + Vector3(0, 0.4, 0)
-		var end: Vector3 = pilot.global_position + Vector3(0, -1.4, 0)
+		var end: Vector3 = pilot.global_position + Vector3(0, -1.2, 0)
 		var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(start, end)
 		query.exclude = [pilot.get_rid()]
 		var res: Dictionary = space_state.intersect_ray(query)
 		if not res.is_empty():
-			var collider: Object = res.get("collider")
-			var car: TrainCar = _find_train_car(collider)
-			if car:
-				return car
+			var norm: Vector3 = res.get("normal", Vector3.UP)
+			if norm.y > 0.4:
+				var collider: Object = res.get("collider")
+				var car: TrainCar = _find_train_car(collider)
+				if car:
+					return car
 				
-	# 3. Proximity check within train car roof, interior cabin floor, or turntable local bounding box
+	# 3. Proximity check within train car roof or interior cabin floor (strictly above platform floor height)
 	var convoy: Array[Node] = pilot.get_tree().get_nodes_in_group(&"train_convoy")
 	for node: Node in convoy:
 		if node is TrainCar and node.visible:
 			var car: TrainCar = node as TrainCar
 			var local_pos: Vector3 = car.global_transform.affine_inverse() * pilot.global_position
-			# Enlarged train car bounds: X in [-2.4, 2.4], Z in [-5.8, 5.8], Y in [0.2, 5.8] (covers inside cabin & roof)
-			if absf(local_pos.x) <= 2.4 and absf(local_pos.z) <= 5.8 and local_pos.y >= 0.2 and local_pos.y <= 5.8:
-				return car
+			if car is TrainHitchPlatformClass or car.name.begins_with("CircularHitch") or car.name.begins_with("Hitch"):
+				# Hitch turntable circular platform: standing surface at Y >= 0.75
+				if Vector2(local_pos.x, local_pos.z).length() <= 1.65 and local_pos.y >= 0.75 and local_pos.y <= 2.8:
+					return car
+			else:
+				# Boxcar / Locomotive: inside cabin (X in [-2.0, 2.0], Z in [-4.6, 4.6], Y in [0.2, 4.0]) or on roof (Y in [4.1, 5.8])
+				var is_inside_cabin: bool = absf(local_pos.x) <= 2.0 and absf(local_pos.z) <= 4.6 and local_pos.y >= 0.2 and local_pos.y <= 4.0
+				var is_on_roof: bool = absf(local_pos.x) <= 2.2 and absf(local_pos.z) <= 5.0 and local_pos.y >= 4.1 and local_pos.y <= 5.8
+				if is_inside_cabin or is_on_roof:
+					return car
 				
 	return null
 

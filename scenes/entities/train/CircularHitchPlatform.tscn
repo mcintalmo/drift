@@ -6,7 +6,7 @@
 [ext_resource type="Script" path="res://scripts/components/grapple_anchor_component.gd" id="4_anchor"]
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_platform"]
-height = 0.4
+height = 1.3
 radius = 1.65
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_grate"]
@@ -19,6 +19,17 @@ material = SubResource("StandardMaterial3D_grate")
 top_radius = 1.6
 bottom_radius = 1.6
 height = 0.22
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_undercarriage"]
+albedo_color = Color(0.12, 0.14, 0.16, 1)
+metallic = 0.9
+roughness = 0.4
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_undercarriage"]
+material = SubResource("StandardMaterial3D_undercarriage")
+top_radius = 1.55
+bottom_radius = 1.45
+height = 0.75
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rim"]
 albedo_color = Color(0.9, 0.7, 0.1, 1)
@@ -74,7 +85,7 @@ car_width_m = 3.2
 car_height_m = 2.0
 
 [node name="HitchCollision" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
 shape = SubResource("CylinderShape3D_platform")
 
 [node name="VisualModel" type="Node3D" parent="."]
@@ -82,6 +93,10 @@ shape = SubResource("CylinderShape3D_platform")
 [node name="PlatformGrateMesh" type="MeshInstance3D" parent="VisualModel"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
 mesh = SubResource("CylinderMesh_grate")
+
+[node name="UndercarriageMesh" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.40, 0)
+mesh = SubResource("CylinderMesh_undercarriage")
 
 [node name="SafetyRimMesh" type="MeshInstance3D" parent="VisualModel"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0)

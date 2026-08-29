@@ -15,7 +15,7 @@ func physics_update(delta: float) -> void:
 		return
 		
 	# Board sled directly when close enough to chassis
-	if Input.is_action_just_pressed(&"pilot_mount_dismount") or Input.is_action_just_pressed(&"pilot_interact") or Input.is_action_just_pressed(&"interact"):
+	if Input.is_action_just_pressed(&"pilot_mount_dismount") or Input.is_action_just_pressed(&"pilot_interact"):
 		var sleds: Array[Node] = pilot.get_tree().get_nodes_in_group(&"player_sled") if pilot.is_inside_tree() else []
 		for s_node: Node in sleds:
 			if s_node is CharacterBody3D and is_instance_valid(s_node):

@@ -6,12 +6,23 @@ extends State
 @export var grapple: PilotGrappleComponent
 @export var weapon_socket: WeaponSocketComponent
 
-const TrainHitchPlatformClass = preload("res://scripts/entities/world/train_hitch_platform.gd")
-
 var _prev_riding_car: TrainCar = null
 
 func physics_update(delta: float) -> void:
 	if not pilot:
+		return
+		
+	var inv_ui: Node = _get_inventory_ui()
+	if inv_ui and inv_ui.get("is_open") == true:
+		var donut: ActionProgressDonut = _get_action_donut()
+		if donut and donut.is_channeling:
+			donut.cancel_channel()
+		# Do not process locomotion or attack/interact inputs when inventory is open
+		pilot.velocity.x = move_toward(pilot.velocity.x, 0.0, 20.0 * delta)
+		pilot.velocity.z = move_toward(pilot.velocity.z, 0.0, 20.0 * delta)
+		if not pilot.is_on_floor():
+			pilot.velocity.y -= 9.81 * delta
+		pilot.move_and_slide()
 		return
 	
 	var riding_car: TrainCar = _get_riding_train_car()
@@ -68,10 +79,10 @@ func physics_update(delta: float) -> void:
 			if target_interactable:
 				if target_interactable is GroundCrate:
 					var crate: GroundCrate = target_interactable as GroundCrate
-					var inv_ui: HexInventoryUI = _get_inventory_ui()
 					crate.interact_loot(pilot, donut, func() -> void:
-						if inv_ui:
-							inv_ui.open_contextual_inventory()
+						var ui_node: Node = _get_inventory_ui()
+						if ui_node and ui_node.has_method("open_contextual_inventory"):
+							ui_node.call("open_contextual_inventory")
 					)
 				elif target_interactable.has_method("interact_plasma_torch"):
 					target_interactable.call("interact_plasma_torch", pilot, donut)
@@ -241,12 +252,12 @@ func _get_action_donut() -> ActionProgressDonut:
 		return donuts[0] as ActionProgressDonut
 	return null
 
-func _get_inventory_ui() -> HexInventoryUI:
+func _get_inventory_ui() -> Node:
 	if not pilot or not pilot.is_inside_tree():
 		return null
-	var uis: Array[Node] = pilot.get_tree().root.find_children("*HexInventoryUI*", "HexInventoryUI", true, false)
-	if not uis.is_empty() and uis[0] is HexInventoryUI:
-		return uis[0] as HexInventoryUI
+	var uis: Array[Node] = pilot.get_tree().root.find_children("*HexInventoryUI*", "", true, false)
+	if not uis.is_empty():
+		return uis[0]
 	return null
 
 ## Detects if the pilot is standing on or riding a TrainCar, CircularHitchPlatform, or inside Boxcar
@@ -286,7 +297,7 @@ func _get_riding_train_car() -> TrainCar:
 		if node is TrainCar and node.visible:
 			var car: TrainCar = node as TrainCar
 			var local_pos: Vector3 = car.global_transform.affine_inverse() * pilot.global_position
-			if car is TrainHitchPlatformClass or car.name.begins_with("CircularHitch") or car.name.begins_with("Hitch"):
+			if ("lead_car" in car) or car.name.begins_with("CircularHitch") or car.name.begins_with("Hitch"):
 				# Hitch turntable circular platform: standing surface at Y >= 0.75
 				if Vector2(local_pos.x, local_pos.z).length() <= 1.65 and local_pos.y >= 0.75 and local_pos.y <= 2.8:
 					return car

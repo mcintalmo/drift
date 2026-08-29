@@ -41,6 +41,9 @@ func _physics_process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"pilot_mount_dismount"):
+		var uis: Array[Node] = get_tree().root.find_children("*HexInventoryUI*", "HexInventoryUI", true, false) if is_inside_tree() else []
+		if not uis.is_empty() and (uis[0] as HexInventoryUI).is_open:
+			return
 		if is_mounted_in_sled and current_sled:
 			dismount_from_sled()
 		else:

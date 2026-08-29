@@ -177,15 +177,13 @@ func _test_pilot_grapple_roof_boarding_boost() -> Dictionary:
 		]
 	}
 
-const PilotWalkingStateClass = preload("res://scripts/state_machine/pilot_states/pilot_walking_state.gd")
-
 func _test_pilot_moving_train_roof_physics_coupling() -> Dictionary:
 	var car: TrainCar = TrainCar.new()
 	car.forward_speed_ms = 14.5
 	car.rotation = Vector3.ZERO
 	
-	var walk_state: PilotWalkingState = PilotWalkingStateClass.new()
-	var extracted_vel: Vector3 = walk_state._extract_body_velocity(car)
+	var walk_state: Node = load("res://scripts/state_machine/pilot_states/pilot_walking_state.gd").new()
+	var extracted_vel: Vector3 = walk_state.call("_extract_body_velocity", car)
 	
 	# Moving train velocity along forward vector -Z (0, 0, -14.5)
 	var passed: bool = is_equal_approx(extracted_vel.z, -14.5) and is_equal_approx(extracted_vel.x, 0.0)

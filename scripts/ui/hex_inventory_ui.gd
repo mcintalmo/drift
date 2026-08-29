@@ -171,6 +171,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				active_grid.set_custom_drag_preview(held_item, held_rotation_step, active_grid.cursor_cell, is_valid)
 
 func open_contextual_inventory() -> void:
+	if is_open:
+		return
+		
 	_discover_scene_inventories()
 	
 	if not discovered_crates.is_empty():

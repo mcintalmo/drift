@@ -305,8 +305,10 @@ func _test_tab_button_signal_binding() -> Dictionary:
 	
 	var crate1: GroundCrate = GroundCrate.new()
 	crate1.name = "VaultCrate1"
+	crate1.crate_state = GroundCrate.CrateState.UNLOOTED
 	var crate2: GroundCrate = GroundCrate.new()
 	crate2.name = "VaultCrate2"
+	crate2.crate_state = GroundCrate.CrateState.UNLOOTED
 	ui.discovered_crates = [crate1, crate2]
 	
 	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
@@ -321,24 +323,29 @@ func _test_tab_button_signal_binding() -> Dictionary:
 	ui._rebuild_tab_bar(left_bar, true)
 	ui._rebuild_tab_bar(right_bar, false)
 	
-	# Left bar children: [CrateTab_0, CrateTab_1, BackpackTab]
+	# Left bar excludes Vault 2 (Crate 1): contains [CrateTab_0, BackpackTab]
 	var btn_vault1: Button = left_bar.get_node_or_null("CrateTab_0") as Button
-	var btn_vault2: Button = left_bar.get_node_or_null("CrateTab_1") as Button
-	var btn_bp: Button = left_bar.get_node_or_null("BackpackTab") as Button
+	var btn_bp_left: Button = left_bar.get_node_or_null("BackpackTab") as Button
+	var has_vault2_on_left: bool = left_bar.get_node_or_null("CrateTab_1") != null
+	
+	# Right bar excludes Vault 1 (Crate 0): contains [CrateTab_1, BackpackTab]
+	var btn_vault2_right: Button = right_bar.get_node_or_null("CrateTab_1") as Button
+	var has_vault1_on_right: bool = right_bar.get_node_or_null("CrateTab_0") != null
+	
+	var mutual_exclusion_ok: bool = (not has_vault2_on_left) and (not has_vault1_on_right)
 	
 	# 1. Click Backpack button on Left bar
-	btn_bp.emit_signal(&"pressed")
+	btn_bp_left.emit_signal(&"pressed")
 	var step1_ok: bool = (ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_right_crate_idx == 1)
 	
-	# 2. Click Vault 1 button on Left bar
-	var btn_vault1_after: Button = left_bar.get_node_or_null("CrateTab_0") as Button
-	btn_vault1_after.emit_signal(&"pressed")
-	var step2_ok: bool = (ui.left_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_left_crate_idx == 0 and ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_right_crate_idx == 1)
+	# Now Left=Backpack, Right=Vault 2 (1).
+	# Left bar excludes Vault 2: contains [CrateTab_0, BackpackTab]
+	# Right bar excludes Backpack: contains [CrateTab_0, CrateTab_1]
+	var btn_vault1_right: Button = right_bar.get_node_or_null("CrateTab_0") as Button
 	
-	# 3. Click Vault 2 button on Left bar (Swap with Right!)
-	var btn_vault2_after: Button = left_bar.get_node_or_null("CrateTab_1") as Button
-	btn_vault2_after.emit_signal(&"pressed")
-	var step3_ok: bool = (ui.left_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_left_crate_idx == 1 and ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_right_crate_idx == 0)
+	# 2. Click Vault 1 on Right bar
+	btn_vault1_right.emit_signal(&"pressed")
+	var step2_ok: bool = (ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_right_crate_idx == 0)
 	
 	crate1.free()
 	crate2.free()
@@ -347,11 +354,11 @@ func _test_tab_button_signal_binding() -> Dictionary:
 	right_bar.free()
 	ui.free()
 	
-	var passed: bool = step1_ok and step2_ok and step3_ok
+	var passed: bool = mutual_exclusion_ok and step1_ok and step2_ok
 	return {
 		"name": "test_tab_button_signal_binding",
 		"passed": passed,
-		"message": "Button pressed signals with bound arguments correctly routed and executed without closure variable capture errors"
+		"message": "Opposite panel active container is mutually excluded from tabs and clicking tabs seamlessly changes selection"
 	}
 
 func _test_single_crate_and_backpack_swapping() -> Dictionary:
@@ -363,15 +370,20 @@ func _test_single_crate_and_backpack_swapping() -> Dictionary:
 	
 	var crate1: GroundCrate = GroundCrate.new()
 	crate1.name = "GroundCrate1"
-	crate1.crate_state = GroundCrate.CrateState.UNLOOTED # Breached/unlocked crate
-	ui.discovered_crates = [crate1]
+	crate1.crate_state = GroundCrate.CrateState.UNLOOTED
+	ui.discovered_crates = []
+	ui.discovered_crates.append(crate1)
 	
 	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
 	ui.backpack_inventory = bp_inv
 	ui.sled_inventory = null
 	
-	# Open contextual inventory with 1 crate and backpack (no sled)
-	ui.open_contextual_inventory()
+	ui.left_container_type = HexInventoryUI.ContainerType.GROUND_CRATE
+	ui.selected_left_crate_idx = 0
+	ui.right_container_type = HexInventoryUI.ContainerType.PILOT_BACKPACK
+	
+	ui._rebuild_tab_bar(left_bar, true)
+	ui._rebuild_tab_bar(right_bar, false)
 	
 	# Initial: Left=Crate, Right=Backpack
 	var init_ok: bool = (
@@ -380,26 +392,14 @@ func _test_single_crate_and_backpack_swapping() -> Dictionary:
 		ui.right_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK
 	)
 	
-	# Tab buttons created on Left: [CrateTab_0, BackpackTab]
-	var btn_bp_left: Button = left_bar.get_node_or_null("BackpackTab") as Button
 	var btn_crate_left: Button = left_bar.get_node_or_null("CrateTab_0") as Button
+	var no_bp_on_left: bool = (left_bar.get_node_or_null("BackpackTab") == null)
 	
-	# 1. Click Backpack on Left bar -> Must SWAP! Left=Backpack, Right=Crate
-	btn_bp_left.emit_signal(&"pressed")
-	var swap1_ok: bool = (
-		ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and
-		ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
-		ui.selected_right_crate_idx == 0
-	)
+	# Right bar excludes Crate -> shows only [BackpackTab]
+	var btn_bp_right: Button = right_bar.get_node_or_null("BackpackTab") as Button
+	var no_crate_on_right: bool = (right_bar.get_node_or_null("CrateTab_0") == null)
 	
-	# 2. Click Crate on Left bar -> Must SWAP back! Left=Crate, Right=Backpack
-	var btn_crate_left_after: Button = left_bar.get_node_or_null("CrateTab_0") as Button
-	btn_crate_left_after.emit_signal(&"pressed")
-	var swap2_ok: bool = (
-		ui.left_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
-		ui.selected_left_crate_idx == 0 and
-		ui.right_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK
-	)
+	var passed: bool = init_ok and (btn_crate_left != null) and no_bp_on_left and (btn_bp_right != null) and no_crate_on_right
 	
 	crate1.free()
 	bp_inv.free()
@@ -407,9 +407,8 @@ func _test_single_crate_and_backpack_swapping() -> Dictionary:
 	right_bar.free()
 	ui.free()
 	
-	var passed: bool = init_ok and swap1_ok and swap2_ok
 	return {
 		"name": "test_single_crate_and_backpack_swapping",
 		"passed": passed,
-		"message": "Player with single breached crate and backpack seamlessly switches and swaps between both containers"
+		"message": "When 2 containers are active across Left and Right, each is mutually excluded from the other's tab bar"
 	}

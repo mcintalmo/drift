@@ -248,36 +248,118 @@ func _discover_scene_inventories() -> void:
 func _set_left_container(type: ContainerType, crate_idx: int = -1) -> void:
 	if type == ContainerType.SLED_CARGO_POD and sled_inventory == null:
 		return
+		
+	var prev_left_type: ContainerType = left_container_type
+	var prev_left_crate_idx: int = selected_left_crate_idx
+	
 	left_container_type = type
 	if crate_idx >= 0:
 		selected_left_crate_idx = crate_idx
 		
-	if right_container_type == left_container_type and (type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx):
-		var options: Array[int] = [ContainerType.PILOT_BACKPACK, ContainerType.GROUND_CRATE]
-		if sled_inventory != null:
-			options.append(ContainerType.SLED_CARGO_POD)
-		for alt: int in options:
-			if alt != int(left_container_type):
-				right_container_type = alt as ContainerType
-				break
+	# Check if the right panel was displaying this exact container -> swap!
+	var is_same_on_right: bool = (right_container_type == left_container_type) and (
+		left_container_type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx
+	)
+	
+	if is_same_on_right:
+		right_container_type = prev_left_type
+		selected_right_crate_idx = prev_left_crate_idx
+		
+		# If after swapping they are still identical, resolve conflict on right panel
+		if (right_container_type == left_container_type) and (
+			left_container_type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx
+		):
+			_resolve_right_container_conflict()
+			
 	_refresh_container_panels()
 
 func _set_right_container(type: ContainerType, crate_idx: int = -1) -> void:
 	if type == ContainerType.SLED_CARGO_POD and sled_inventory == null:
 		return
+		
+	var prev_right_type: ContainerType = right_container_type
+	var prev_right_crate_idx: int = selected_right_crate_idx
+	
 	right_container_type = type
 	if crate_idx >= 0:
 		selected_right_crate_idx = crate_idx
 		
-	if left_container_type == right_container_type and (type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx):
-		var options: Array[int] = [ContainerType.GROUND_CRATE, ContainerType.PILOT_BACKPACK]
-		if sled_inventory != null:
-			options.append(ContainerType.SLED_CARGO_POD)
-		for alt: int in options:
-			if alt != int(right_container_type):
-				left_container_type = alt as ContainerType
-				break
+	# Check if the left panel was displaying this exact container -> swap!
+	var is_same_on_left: bool = (left_container_type == right_container_type) and (
+		right_container_type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx
+	)
+	
+	if is_same_on_left:
+		left_container_type = prev_right_type
+		selected_left_crate_idx = prev_right_crate_idx
+		
+		# If after swapping they are still identical, resolve conflict on left panel
+		if (left_container_type == right_container_type) and (
+			right_container_type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx
+		):
+			_resolve_left_container_conflict()
+			
 	_refresh_container_panels()
+
+func _resolve_right_container_conflict() -> void:
+	if left_container_type == ContainerType.GROUND_CRATE:
+		for i: int in range(discovered_crates.size()):
+			if i != selected_left_crate_idx:
+				right_container_type = ContainerType.GROUND_CRATE
+				selected_right_crate_idx = i
+				return
+		if backpack_inventory != null:
+			right_container_type = ContainerType.PILOT_BACKPACK
+			return
+		if sled_inventory != null:
+			right_container_type = ContainerType.SLED_CARGO_POD
+			return
+	elif left_container_type == ContainerType.PILOT_BACKPACK:
+		if not discovered_crates.is_empty():
+			right_container_type = ContainerType.GROUND_CRATE
+			selected_right_crate_idx = 0
+			return
+		if sled_inventory != null:
+			right_container_type = ContainerType.SLED_CARGO_POD
+			return
+	elif left_container_type == ContainerType.SLED_CARGO_POD:
+		if not discovered_crates.is_empty():
+			right_container_type = ContainerType.GROUND_CRATE
+			selected_right_crate_idx = 0
+			return
+		if backpack_inventory != null:
+			right_container_type = ContainerType.PILOT_BACKPACK
+			return
+
+func _resolve_left_container_conflict() -> void:
+	if right_container_type == ContainerType.GROUND_CRATE:
+		for i: int in range(discovered_crates.size()):
+			if i != selected_right_crate_idx:
+				left_container_type = ContainerType.GROUND_CRATE
+				selected_left_crate_idx = i
+				return
+		if backpack_inventory != null:
+			left_container_type = ContainerType.PILOT_BACKPACK
+			return
+		if sled_inventory != null:
+			left_container_type = ContainerType.SLED_CARGO_POD
+			return
+	elif right_container_type == ContainerType.PILOT_BACKPACK:
+		if not discovered_crates.is_empty():
+			left_container_type = ContainerType.GROUND_CRATE
+			selected_left_crate_idx = 0
+			return
+		if sled_inventory != null:
+			left_container_type = ContainerType.SLED_CARGO_POD
+			return
+	elif right_container_type == ContainerType.SLED_CARGO_POD:
+		if not discovered_crates.is_empty():
+			left_container_type = ContainerType.GROUND_CRATE
+			selected_left_crate_idx = 0
+			return
+		if backpack_inventory != null:
+			left_container_type = ContainerType.PILOT_BACKPACK
+			return
 
 func _refresh_container_panels() -> void:
 	# 1. Bind left container
@@ -314,21 +396,14 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 	var active_type: ContainerType = left_container_type if is_left else right_container_type
 	var selected_crate_idx: int = selected_left_crate_idx if is_left else selected_right_crate_idx
 	
-	var other_type: ContainerType = right_container_type if is_left else left_container_type
-	var other_crate_idx: int = selected_right_crate_idx if is_left else selected_left_crate_idx
-	
-	# 1. Add Dynamic Crate Tabs (omit if open on the opposite panel)
+	# 1. Add all discovered Crate tabs (always visible so player can switch/swap freely)
 	for i: int in range(discovered_crates.size()):
 		var crate: GroundCrate = discovered_crates[i]
 		if not is_instance_valid(crate):
 			continue
 			
 		var is_this_active: bool = (active_type == ContainerType.GROUND_CRATE and selected_crate_idx == i)
-		var is_open_on_other: bool = (other_type == ContainerType.GROUND_CRATE and other_crate_idx == i)
 		
-		if is_open_on_other and not is_this_active:
-			continue
-			
 		var btn: Button = Button.new()
 		btn.name = "CrateTab_%d" % i
 		btn.custom_minimum_size = Vector2(0, 26)
@@ -344,10 +419,9 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 			btn.pressed.connect(func() -> void: _set_right_container(ContainerType.GROUND_CRATE, target_idx))
 		tab_bar.add_child(btn)
 		
-	# 2. Add Backpack Tab (omit if open on the opposite panel)
-	var is_backpack_active: bool = (active_type == ContainerType.PILOT_BACKPACK)
-	var is_backpack_open_on_other: bool = (other_type == ContainerType.PILOT_BACKPACK)
-	if backpack_inventory != null and (not is_backpack_open_on_other or is_backpack_active):
+	# 2. Add Backpack Tab
+	if backpack_inventory != null:
+		var is_backpack_active: bool = (active_type == ContainerType.PILOT_BACKPACK)
 		var bp_btn: Button = Button.new()
 		bp_btn.name = "BackpackTab"
 		bp_btn.custom_minimum_size = Vector2(0, 26)
@@ -360,10 +434,9 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 			bp_btn.pressed.connect(func() -> void: _set_right_container(ContainerType.PILOT_BACKPACK))
 		tab_bar.add_child(bp_btn)
 	
-	# 3. Add Sled Tab ONLY if sled is within interaction range and NOT open on the opposite panel
-	var is_sled_active: bool = (active_type == ContainerType.SLED_CARGO_POD)
-	var is_sled_open_on_other: bool = (other_type == ContainerType.SLED_CARGO_POD)
-	if sled_inventory != null and (not is_sled_open_on_other or is_sled_active):
+	# 3. Add Sled Tab ONLY if sled is within interaction range
+	if sled_inventory != null:
+		var is_sled_active: bool = (active_type == ContainerType.SLED_CARGO_POD)
 		var sled_btn: Button = Button.new()
 		sled_btn.name = "SledTab"
 		sled_btn.custom_minimum_size = Vector2(0, 26)

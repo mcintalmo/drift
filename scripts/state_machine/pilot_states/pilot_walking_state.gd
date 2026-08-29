@@ -209,9 +209,22 @@ func _find_nearby_interact_target() -> Node:
 	# 2. Check train convoy nodes (Hitch platforms and Boxcars)
 	var convoy: Array[Node] = pilot.get_tree().get_nodes_in_group(&"train_convoy")
 	for node: Node in convoy:
-		if is_instance_valid(node):
-			var n_pos: Vector3 = node.global_position if node.is_inside_tree() else (node as Node3D).position
-			var dist: float = p_pos.distance_to(n_pos)
+		if is_instance_valid(node) and node is Node3D:
+			var node_3d: Node3D = node as Node3D
+			var dist: float = 999.0
+			
+			if node is TrainCar:
+				var car: TrainCar = node as TrainCar
+				var p_local: Vector3 = car.global_transform.affine_inverse() * p_pos if car.is_inside_tree() else p_pos - car.position
+				# Check proximity to Left door (X=-2.18), Right door (X=+2.18), and coupler/platform center
+				var d_left: float = p_local.distance_to(Vector3(-2.18, 2.0, 0.0))
+				var d_right: float = p_local.distance_to(Vector3(2.18, 2.0, 0.0))
+				var d_center: float = p_local.distance_to(Vector3(0.0, 0.5, 0.0))
+				dist = minf(d_left, minf(d_right, d_center))
+			else:
+				var n_pos: Vector3 = node_3d.global_position if node_3d.is_inside_tree() else node_3d.position
+				dist = p_pos.distance_to(n_pos)
+				
 			if dist < min_dist:
 				min_dist = dist
 				best_target = node

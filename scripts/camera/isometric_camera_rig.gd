@@ -221,6 +221,15 @@ func _update_terrain_occlusion(delta: float) -> void:
 func _collect_mesh_instances(node: Node, out_meshes: Array[MeshInstance3D]) -> void:
 	if not node:
 		return
+		
+	# Exclude interactable objects: crates, sliding doors, and locks must remain 100% opaque
+	if node is GroundCrate or node.is_in_group(&"loot_crates") or node.name.begins_with("VaultCrate") or node.name.begins_with("GroundCrate"):
+		return
+	if node.name.ends_with("SlidingDoor") or node.name.ends_with("Lock") or node.name == "MagneticLock":
+		return
+	if node.is_in_group(&"interactable_doors") or node.get_meta("opaque_interactable", false):
+		return
+		
 	if node is MeshInstance3D and node.name != "OcclusionShadowProxy":
 		if not out_meshes.has(node as MeshInstance3D):
 			out_meshes.append(node as MeshInstance3D)

@@ -127,6 +127,20 @@ func interact_plasma_torch(player: Node3D, donut: Node) -> void:
 				huds[0].call("show_banner", "CAR MUST BE DECOUPLED FROM TRAIN FIRST!")
 		return
 		
+	# Determine nearest door lock to player (Left lock at X=-2.18 vs Right lock at X=+2.18)
+	var anchor_target: Node3D = self
+	if player:
+		var p_pos: Vector3 = player.global_position if player.is_inside_tree() else player.position
+		var left_pos: Vector3 = left_lock_vis.global_position if (left_lock_vis and left_lock_vis.is_inside_tree()) else (global_position + Vector3(-2.18, 2.0, 0))
+		var right_pos: Vector3 = right_lock_vis.global_position if (right_lock_vis and right_lock_vis.is_inside_tree()) else (global_position + Vector3(2.18, 2.0, 0))
+		
+		if p_pos.distance_to(left_pos) < p_pos.distance_to(right_pos):
+			anchor_target = left_lock_vis if left_lock_vis else left_door if left_door else self
+		else:
+			anchor_target = right_lock_vis if right_lock_vis else right_door if right_door else self
+	elif left_lock_vis:
+		anchor_target = left_lock_vis
+		
 	if donut and donut.has_method("start_channel"):
 		door_breach_started.emit()
 		donut.start_channel(
@@ -137,7 +151,7 @@ func interact_plasma_torch(player: Node3D, donut: Node) -> void:
 				door_breach_completed.emit(),
 			func() -> void:
 				pass, # Cancelled
-			left_lock_vis if left_lock_vis else right_lock_vis if right_lock_vis else lock_vis if lock_vis else self,
+			anchor_target,
 			player,
 			4.5
 		)

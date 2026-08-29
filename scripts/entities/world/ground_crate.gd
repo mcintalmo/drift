@@ -71,6 +71,8 @@ func set_crate_state(new_state: CrateState) -> void:
 	
 	match crate_state:
 		CrateState.NON_INTERACTABLE:
+			visible = false
+			process_mode = Node.PROCESS_MODE_DISABLED
 			if hurtbox:
 				hurtbox.is_invulnerable = true
 			if lock_mesh:
@@ -81,6 +83,8 @@ func set_crate_state(new_state: CrateState) -> void:
 				lock_mesh.material_override = mat
 				
 		CrateState.LOCKED:
+			visible = true
+			process_mode = Node.PROCESS_MODE_INHERIT
 			if hurtbox:
 				hurtbox.is_invulnerable = false
 			if lock_mesh:
@@ -93,6 +97,8 @@ func set_crate_state(new_state: CrateState) -> void:
 				lock_mesh.material_override = mat
 				
 		CrateState.UNLOOTED:
+			visible = true
+			process_mode = Node.PROCESS_MODE_INHERIT
 			if hurtbox:
 				hurtbox.is_invulnerable = true
 			if lock_mesh:

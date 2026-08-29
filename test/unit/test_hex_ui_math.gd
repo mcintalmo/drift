@@ -19,6 +19,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_vault_to_backpack_switching())
 	results.append(_test_tab_button_signal_binding())
 	results.append(_test_single_crate_and_backpack_swapping())
+	results.append(_test_on_sled_locked_inventory())
 	return results
 
 func _test_axial_to_pixel_roundtrip() -> Dictionary:
@@ -184,7 +185,7 @@ func _test_heavy_cargo_com_shift() -> Dictionary:
 
 func _test_multi_vault_auto_swapping() -> Dictionary:
 	var ui: HexInventoryUI = HexInventoryUI.new()
-	ui.is_pilot_mounted = true # On sled: free container swapping enabled
+	ui.is_pilot_mounted = false # On foot
 	
 	# Simulate 2 discovered vault crates
 	var crate1: GroundCrate = GroundCrate.new()
@@ -246,7 +247,7 @@ func _test_standalone_backpack_display() -> Dictionary:
 
 func _test_vault_to_backpack_switching() -> Dictionary:
 	var ui: HexInventoryUI = HexInventoryUI.new()
-	ui.is_pilot_mounted = true # On sled: free container swapping enabled
+	ui.is_pilot_mounted = false # On foot
 	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
 	ui.backpack_inventory = bp_inv
 	
@@ -295,12 +296,12 @@ func _test_vault_to_backpack_switching() -> Dictionary:
 	return {
 		"name": "test_vault_to_backpack_switching",
 		"passed": passed,
-		"message": "Seamlessly switched and swapped between Vaults and Backpack across Left & Right panels on sled"
+		"message": "Seamlessly switched and swapped between Vaults and Backpack across Left & Right panels on foot"
 	}
 
 func _test_tab_button_signal_binding() -> Dictionary:
 	var ui: HexInventoryUI = HexInventoryUI.new()
-	ui.is_pilot_mounted = true # On sled: free container swapping enabled
+	ui.is_pilot_mounted = false # On foot
 	var left_bar: HBoxContainer = HBoxContainer.new()
 	var right_bar: HBoxContainer = HBoxContainer.new()
 	ui.left_tab_bar = left_bar
@@ -366,6 +367,7 @@ func _test_tab_button_signal_binding() -> Dictionary:
 
 func _test_single_crate_and_backpack_swapping() -> Dictionary:
 	var ui: HexInventoryUI = HexInventoryUI.new()
+	ui.is_pilot_mounted = false # On foot
 	var left_bar: HBoxContainer = HBoxContainer.new()
 	var right_bar: HBoxContainer = HBoxContainer.new()
 	ui.left_tab_bar = left_bar
@@ -379,42 +381,106 @@ func _test_single_crate_and_backpack_swapping() -> Dictionary:
 	
 	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
 	ui.backpack_inventory = bp_inv
-	ui.sled_inventory = null
 	
-	# On the ground: Left=Backpack, Right=Crate
-	ui.left_container_type = HexInventoryUI.ContainerType.PILOT_BACKPACK
-	ui.selected_left_crate_idx = 0
-	ui.right_container_type = HexInventoryUI.ContainerType.GROUND_CRATE
-	ui.selected_right_crate_idx = 0
+	var sled_inv: HexInventoryComponent = HexInventoryComponent.new()
+	ui.sled_inventory = sled_inv
 	
-	ui._rebuild_tab_bar(left_bar, true)
-	ui._rebuild_tab_bar(right_bar, false)
-	
+	# When opening contextual inventory on foot with Crate + Sled:
 	# Initial: Left=Backpack, Right=Crate
+	ui.open_contextual_inventory()
+	
 	var init_ok: bool = (
 		ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and
 		ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
 		ui.selected_right_crate_idx == 0
 	)
 	
-	# Left bar on ground shows only [BackpackTab]
+	# Left bar excludes Crate -> shows [BackpackTab, SledTab]
 	var btn_bp_left: Button = left_bar.get_node_or_null("BackpackTab") as Button
+	var btn_sled_left: Button = left_bar.get_node_or_null("SledTab") as Button
 	var no_crate_on_left: bool = (left_bar.get_node_or_null("CrateTab_0") == null)
 	
-	# Right bar excludes Backpack -> shows only [CrateTab_0]
+	# Right bar excludes Backpack -> shows [CrateTab_0, SledTab]
 	var btn_crate_right: Button = right_bar.get_node_or_null("CrateTab_0") as Button
+	var btn_sled_right: Button = right_bar.get_node_or_null("SledTab") as Button
 	var no_bp_on_right: bool = (right_bar.get_node_or_null("BackpackTab") == null)
 	
-	var passed: bool = init_ok and (btn_bp_left != null) and no_crate_on_left and (btn_crate_right != null) and no_bp_on_right
+	var tabs_ok: bool = (btn_bp_left != null) and (btn_sled_left != null) and no_crate_on_left and (btn_crate_right != null) and (btn_sled_right != null) and no_bp_on_right
+	
+	# Player clicks Sled on Left bar: Left becomes Sled, Right remains Crate!
+	btn_sled_left.emit_signal(&"pressed")
+	var switch_ok: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.SLED_CARGO_POD and
+		ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
+		ui.selected_right_crate_idx == 0
+	)
+	
+	# Left bar now excludes Crate -> shows [BackpackTab, SledTab]
+	# Right bar now excludes Sled -> shows [CrateTab_0, BackpackTab]
+	var has_bp_on_right_after: bool = (right_bar.get_node_or_null("BackpackTab") != null)
+	var no_sled_on_right_after: bool = (right_bar.get_node_or_null("SledTab") == null)
 	
 	crate1.free()
 	bp_inv.free()
+	sled_inv.free()
+	left_bar.free()
+	right_bar.free()
+	ui.free()
+	
+	var passed: bool = init_ok and tabs_ok and switch_ok and has_bp_on_right_after and no_sled_on_right_after
+	return {
+		"name": "test_single_crate_and_backpack_swapping",
+		"passed": passed,
+		"message": "On foot: Left opens to Backpack and Right to Crate with full mutual tab switching between Backpack, Sled, and Crates"
+	}
+
+func _test_on_sled_locked_inventory() -> Dictionary:
+	var ui: HexInventoryUI = HexInventoryUI.new()
+	ui.is_pilot_mounted = true # Mounted on sled
+	var left_bar: HBoxContainer = HBoxContainer.new()
+	var right_bar: HBoxContainer = HBoxContainer.new()
+	ui.left_tab_bar = left_bar
+	ui.right_tab_bar = right_bar
+	
+	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
+	ui.backpack_inventory = bp_inv
+	var sled_inv: HexInventoryComponent = HexInventoryComponent.new()
+	ui.sled_inventory = sled_inv
+	
+	# Set inventory views on the sled
+	ui.left_container_type = HexInventoryUI.ContainerType.PILOT_BACKPACK
+	ui.right_container_type = HexInventoryUI.ContainerType.SLED_CARGO_POD
+	ui._rebuild_tab_bar(left_bar, true)
+	ui._rebuild_tab_bar(right_bar, false)
+	
+	var open_ok: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and
+		ui.right_container_type == HexInventoryUI.ContainerType.SLED_CARGO_POD
+	)
+	
+	# Left bar only shows Backpack; Right bar only shows Sled
+	var btn_bp_left: Button = left_bar.get_node_or_null("BackpackTab") as Button
+	var no_sled_on_left: bool = (left_bar.get_node_or_null("SledTab") == null)
+	var btn_sled_right: Button = right_bar.get_node_or_null("SledTab") as Button
+	var no_bp_on_right: bool = (right_bar.get_node_or_null("BackpackTab") == null)
+	
+	# Attempting to switch Left to Sled or Ground Crate is rejected while on the sled
+	ui._set_left_container(HexInventoryUI.ContainerType.SLED_CARGO_POD)
+	var left_still_bp: bool = (ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK)
+	
+	ui._set_right_container(HexInventoryUI.ContainerType.PILOT_BACKPACK)
+	var right_still_sled: bool = (ui.right_container_type == HexInventoryUI.ContainerType.SLED_CARGO_POD)
+	
+	var passed: bool = open_ok and (btn_bp_left != null) and no_sled_on_left and (btn_sled_right != null) and no_bp_on_right and left_still_bp and right_still_sled
+	
+	bp_inv.free()
+	sled_inv.free()
 	left_bar.free()
 	right_bar.free()
 	ui.free()
 	
 	return {
-		"name": "test_single_crate_and_backpack_swapping",
+		"name": "test_on_sled_locked_inventory",
 		"passed": passed,
-		"message": "When on the ground, Left panel is locked to Backpack and Right panel shows external containers without duplicate tabs"
+		"message": "When mounted on the sled, inventory strictly locks Left to Backpack and Right to Sled"
 	}

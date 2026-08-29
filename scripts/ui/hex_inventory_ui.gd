@@ -255,31 +255,32 @@ func _discover_scene_inventories() -> void:
 	if pilot:
 		backpack_inventory = pilot.get_node_or_null("BackpackInventoryComponent") as HexInventoryComponent
 		
-		# Find all crates in the scene tree reliably via group and node tree search
-		var crate_candidates: Array[Node] = get_tree().get_nodes_in_group(&"loot_crates")
-		if crate_candidates.is_empty():
-			crate_candidates = get_tree().root.find_children("*", "", true, false)
+		# Only discover world crates when on foot (cannot access world crates from the sled)
+		if not is_pilot_mounted:
+			var crate_candidates: Array[Node] = get_tree().get_nodes_in_group(&"loot_crates")
+			if crate_candidates.is_empty():
+				crate_candidates = get_tree().root.find_children("*", "", true, false)
+				
+			for c: Node in crate_candidates:
+				if c is GroundCrate and is_instance_valid(c):
+					var crate: GroundCrate = c as GroundCrate
+					# Only include breached / unlocked crates (UNLOOTED) in UI tabs
+					if crate.crate_state != GroundCrate.CrateState.UNLOOTED:
+						continue
+					if crate.global_position.distance_to(pilot.global_position) <= 8.0:
+						if not discovered_crates.has(crate):
+							discovered_crates.append(crate)
+							if not crate.crate_state_changed.is_connected(_on_crate_state_changed):
+								crate.crate_state_changed.connect(_on_crate_state_changed)
+						
+			# Sort discovered crates by name for consistent UI tab ordering
+			discovered_crates.sort_custom(func(a: GroundCrate, b: GroundCrate) -> bool:
+				return a.name < b.name
+			)
 			
-		for c: Node in crate_candidates:
-			if c is GroundCrate and is_instance_valid(c):
-				var crate: GroundCrate = c as GroundCrate
-				# Only include breached / unlocked crates (UNLOOTED) in UI tabs
-				if crate.crate_state != GroundCrate.CrateState.UNLOOTED:
-					continue
-				if crate.global_position.distance_to(pilot.global_position) <= 8.0:
-					if not discovered_crates.has(crate):
-						discovered_crates.append(crate)
-						if not crate.crate_state_changed.is_connected(_on_crate_state_changed):
-							crate.crate_state_changed.connect(_on_crate_state_changed)
-					
-		# Sort discovered crates by name for consistent UI tab ordering
-		discovered_crates.sort_custom(func(a: GroundCrate, b: GroundCrate) -> bool:
-			return a.name < b.name
-		)
-		
-		if not discovered_crates.is_empty():
-			selected_left_crate_idx = clampi(selected_left_crate_idx, 0, discovered_crates.size() - 1)
-			selected_right_crate_idx = clampi(selected_right_crate_idx, 0, discovered_crates.size() - 1)
+			if not discovered_crates.is_empty():
+				selected_left_crate_idx = clampi(selected_left_crate_idx, 0, discovered_crates.size() - 1)
+				selected_right_crate_idx = clampi(selected_right_crate_idx, 0, discovered_crates.size() - 1)
 	
 	var sled_nodes: Array[Node] = get_tree().get_nodes_in_group(&"player_sled")
 	if not sled_nodes.is_empty() and is_instance_valid(sled_nodes[0]):
@@ -316,8 +317,8 @@ func _set_left_container(type: ContainerType, crate_idx: int = -1) -> void:
 	if held_item:
 		_cancel_drag()
 		
-	# When on foot on the ground, Left panel is locked to Pilot Backpack
-	if not is_pilot_mounted and type != ContainerType.PILOT_BACKPACK:
+	# On sled, views are fixed to Backpack (Left) and Sled (Right)
+	if is_pilot_mounted and type != ContainerType.PILOT_BACKPACK:
 		return
 		
 	if type == ContainerType.SLED_CARGO_POD and sled_inventory == null:
@@ -351,6 +352,10 @@ func _set_left_container(type: ContainerType, crate_idx: int = -1) -> void:
 func _set_right_container(type: ContainerType, crate_idx: int = -1) -> void:
 	if held_item:
 		_cancel_drag()
+		
+	# On sled, views are fixed to Backpack (Left) and Sled (Right)
+	if is_pilot_mounted and type != ContainerType.SLED_CARGO_POD:
+		return
 		
 	if type == ContainerType.SLED_CARGO_POD and sled_inventory == null:
 		return
@@ -441,21 +446,30 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 	var other_type: ContainerType = right_container_type if is_left else left_container_type
 	var other_crate_idx: int = selected_right_crate_idx if is_left else selected_left_crate_idx
 	
-	# If on foot on ground and this is the Left bar: Left panel is dedicated to Backpack
-	if not is_pilot_mounted and is_left:
-		if backpack_inventory != null:
-			var is_backpack_active: bool = (active_type == ContainerType.PILOT_BACKPACK)
+	# If mounted in sled, views are fixed: Left is Backpack, Right is Sled
+	if is_pilot_mounted:
+		if is_left and backpack_inventory != null:
 			var bp_btn: Button = Button.new()
 			bp_btn.name = "BackpackTab"
 			bp_btn.custom_minimum_size = Vector2(0, 26)
 			bp_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			bp_btn.text = "Backpack"
 			bp_btn.focus_mode = Control.FOCUS_NONE
-			bp_btn.add_theme_stylebox_override(&"normal", active_tab_style if is_backpack_active else inactive_tab_style)
-			bp_btn.add_theme_stylebox_override(&"hover", active_tab_style if is_backpack_active else inactive_tab_style)
+			bp_btn.add_theme_stylebox_override(&"normal", active_tab_style)
+			bp_btn.add_theme_stylebox_override(&"hover", active_tab_style)
 			bp_btn.add_theme_stylebox_override(&"pressed", active_tab_style)
-			bp_btn.pressed.connect(_on_left_tab_pressed.bind(ContainerType.PILOT_BACKPACK, -1))
 			tab_bar.add_child(bp_btn)
+		elif not is_left and sled_inventory != null:
+			var sled_btn: Button = Button.new()
+			sled_btn.name = "SledTab"
+			sled_btn.custom_minimum_size = Vector2(0, 26)
+			sled_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			sled_btn.text = "Sled"
+			sled_btn.focus_mode = Control.FOCUS_NONE
+			sled_btn.add_theme_stylebox_override(&"normal", active_tab_style)
+			sled_btn.add_theme_stylebox_override(&"hover", active_tab_style)
+			sled_btn.add_theme_stylebox_override(&"pressed", active_tab_style)
+			tab_bar.add_child(sled_btn)
 		return
 	
 	# If this is the right panel and no secondary containers exist (no crates, no sled), don't show tabs on right

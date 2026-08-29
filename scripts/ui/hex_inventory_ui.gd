@@ -44,6 +44,7 @@ var inactive_tab_style: StyleBoxFlat
 @onready var left_tab_bar: HBoxContainer = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/LeftTabBar
 @onready var right_tab_bar: HBoxContainer = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/RightTabBar
 
+@onready var balance_title: Label = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/BalanceTitle
 @onready var com_widget: COMVisualizerWidget = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/COMVisualizerWidget
 @onready var tooltip_name: Label = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer/ItemNameLabel
 @onready var tooltip_mass: Label = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer/ItemMassLabel
@@ -144,7 +145,7 @@ func _on_grid_cell_clicked(grid: HexGridControl, cell: Vector2i, button: int, is
 					_start_dragging(item, grid.grid_inventory, cell)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed(&"pause_inventory") or event.is_action_pressed(&"ui_cancel"):
+	if event.is_action_pressed(&"pause_inventory") or event.is_action_pressed(&"ui_cancel") or (event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE):
 		if is_open:
 			if held_item:
 				_cancel_drag()
@@ -158,7 +159,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			if held_item:
 				_rotate_held_item()
 		
-		elif event.is_action_pressed(&"pilot_lean_left") or (event is InputEventKey and event.pressed and event.physical_keycode == KEY_TAB):
+		elif event.is_action_pressed(&"pilot_lean_left") or (event is InputEventKey and event.pressed and (event.physical_keycode == KEY_TAB or event.physical_keycode == KEY_Q or event.physical_keycode == KEY_E)):
 			if right_container_type != ContainerType.NONE:
 				active_focus_panel = 1 - active_focus_panel
 			else:
@@ -176,7 +177,7 @@ func open_contextual_inventory() -> void:
 		left_container_type = ContainerType.GROUND_CRATE
 		selected_left_crate_idx = 0
 		if discovered_crates.size() > 1:
-			# 2 or more vaults open: Left shows Vault 1, Right shows Vault 2
+			# 2 or more vaults/crates: Left shows Crate 1, Right shows Crate 2
 			right_container_type = ContainerType.GROUND_CRATE
 			selected_right_crate_idx = 1
 		elif sled_inventory:
@@ -253,12 +254,14 @@ func _discover_scene_inventories() -> void:
 		for c: Node in crate_candidates:
 			if c is GroundCrate and is_instance_valid(c):
 				var crate: GroundCrate = c as GroundCrate
-				# Only include UNLOOTED (unlocked) crates in the inventory tabs
-				if crate.crate_state != GroundCrate.CrateState.UNLOOTED:
+				# Skip only NON_INTERACTABLE crates (e.g. inside locked sealed boxcars)
+				if crate.crate_state == GroundCrate.CrateState.NON_INTERACTABLE:
 					continue
 				if crate.global_position.distance_to(pilot.global_position) <= 8.0:
 					if not discovered_crates.has(crate):
 						discovered_crates.append(crate)
+						if not crate.crate_state_changed.is_connected(_on_crate_state_changed):
+							crate.crate_state_changed.connect(_on_crate_state_changed)
 					
 		# Sort discovered crates by name for consistent UI tab ordering
 		discovered_crates.sort_custom(func(a: GroundCrate, b: GroundCrate) -> bool:
@@ -279,6 +282,10 @@ func _discover_scene_inventories() -> void:
 			sled_com_component = sled_node.get_node_or_null("CenterOfMassComponent") as CenterOfMassComponent
 			if sled_com_component:
 				sled_inventory = sled_com_component.get_node_or_null("CargoPodInventory") as HexInventoryComponent
+
+func _on_crate_state_changed(_new_state: GroundCrate.CrateState) -> void:
+	if is_open:
+		_refresh_container_panels()
 
 func _are_containers_same(type_a: ContainerType, idx_a: int, type_b: ContainerType, idx_b: int) -> bool:
 	if type_a == ContainerType.NONE or type_b == ContainerType.NONE:
@@ -378,18 +385,32 @@ func _refresh_container_panels() -> void:
 	_rebuild_tab_bar(left_tab_bar, true)
 	_rebuild_tab_bar(right_tab_bar, false)
 	
-	# 4. Explicitly update Sled COM visualizer
-	if sled_com_component and is_instance_valid(sled_com_component):
+	# 4. Center Panel & COM visualizer
+	if sled_com_component and is_instance_valid(sled_com_component) and sled_inventory != null:
 		sled_com_component.recalculate_com()
+		if balance_title:
+			balance_title.text = "SLED BALANCE"
+			balance_title.visible = true
 		if com_widget:
 			com_widget.update_com_data(
 				sled_com_component.current_total_mass_kg,
 				Vector2(sled_com_component.current_com_offset_3d.x, sled_com_component.current_com_offset_3d.y)
 			)
 			com_widget.visible = true
-	else:
+	elif backpack_inventory != null:
+		if balance_title:
+			balance_title.text = "PILOT BACKPACK"
+			balance_title.visible = true
 		if com_widget:
-			com_widget.visible = (sled_inventory != null)
+			var bp_mass: float = backpack_inventory.get_total_items_mass()
+			var bp_com: Vector2 = backpack_inventory.get_com_offset_2d()
+			com_widget.update_com_data(bp_mass, bp_com)
+			com_widget.visible = true
+	else:
+		if balance_title:
+			balance_title.visible = false
+		if com_widget:
+			com_widget.visible = false
 
 func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 	if not tab_bar:

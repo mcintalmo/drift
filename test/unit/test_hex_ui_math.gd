@@ -18,6 +18,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_standalone_backpack_display())
 	results.append(_test_vault_to_backpack_switching())
 	results.append(_test_tab_button_signal_binding())
+	results.append(_test_single_crate_and_backpack_swapping())
 	return results
 
 func _test_axial_to_pixel_roundtrip() -> Dictionary:
@@ -351,4 +352,64 @@ func _test_tab_button_signal_binding() -> Dictionary:
 		"name": "test_tab_button_signal_binding",
 		"passed": passed,
 		"message": "Button pressed signals with bound arguments correctly routed and executed without closure variable capture errors"
+	}
+
+func _test_single_crate_and_backpack_swapping() -> Dictionary:
+	var ui: HexInventoryUI = HexInventoryUI.new()
+	var left_bar: HBoxContainer = HBoxContainer.new()
+	var right_bar: HBoxContainer = HBoxContainer.new()
+	ui.left_tab_bar = left_bar
+	ui.right_tab_bar = right_bar
+	
+	var crate1: GroundCrate = GroundCrate.new()
+	crate1.name = "GroundCrate1"
+	crate1.crate_state = GroundCrate.CrateState.LOCKED # Locked crate
+	ui.discovered_crates = [crate1]
+	
+	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
+	ui.backpack_inventory = bp_inv
+	ui.sled_inventory = null
+	
+	# Open contextual inventory with 1 crate and backpack (no sled)
+	ui.open_contextual_inventory()
+	
+	# Initial: Left=Crate, Right=Backpack
+	var init_ok: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
+		ui.selected_left_crate_idx == 0 and
+		ui.right_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK
+	)
+	
+	# Tab buttons created on Left: [CrateTab_0, BackpackTab]
+	var btn_bp_left: Button = left_bar.get_node_or_null("BackpackTab") as Button
+	var btn_crate_left: Button = left_bar.get_node_or_null("CrateTab_0") as Button
+	
+	# 1. Click Backpack on Left bar -> Must SWAP! Left=Backpack, Right=Crate
+	btn_bp_left.emit_signal(&"pressed")
+	var swap1_ok: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and
+		ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
+		ui.selected_right_crate_idx == 0
+	)
+	
+	# 2. Click Crate on Left bar -> Must SWAP back! Left=Crate, Right=Backpack
+	var btn_crate_left_after: Button = left_bar.get_node_or_null("CrateTab_0") as Button
+	btn_crate_left_after.emit_signal(&"pressed")
+	var swap2_ok: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
+		ui.selected_left_crate_idx == 0 and
+		ui.right_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK
+	)
+	
+	crate1.free()
+	bp_inv.free()
+	left_bar.free()
+	right_bar.free()
+	ui.free()
+	
+	var passed: bool = init_ok and swap1_ok and swap2_ok
+	return {
+		"name": "test_single_crate_and_backpack_swapping",
+		"passed": passed,
+		"message": "Player with single crate (even locked) and backpack seamlessly switches and swaps between both containers"
 	}

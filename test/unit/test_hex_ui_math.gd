@@ -17,6 +17,7 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_multi_vault_auto_swapping())
 	results.append(_test_standalone_backpack_display())
 	results.append(_test_vault_to_backpack_switching())
+	results.append(_test_tab_button_signal_binding())
 	return results
 
 func _test_axial_to_pixel_roundtrip() -> Dictionary:
@@ -292,4 +293,62 @@ func _test_vault_to_backpack_switching() -> Dictionary:
 		"name": "test_vault_to_backpack_switching",
 		"passed": passed,
 		"message": "Seamlessly switched and swapped between Vaults and Backpack across Left & Right panels"
+	}
+
+func _test_tab_button_signal_binding() -> Dictionary:
+	var ui: HexInventoryUI = HexInventoryUI.new()
+	var left_bar: HBoxContainer = HBoxContainer.new()
+	var right_bar: HBoxContainer = HBoxContainer.new()
+	ui.left_tab_bar = left_bar
+	ui.right_tab_bar = right_bar
+	
+	var crate1: GroundCrate = GroundCrate.new()
+	crate1.name = "VaultCrate1"
+	var crate2: GroundCrate = GroundCrate.new()
+	crate2.name = "VaultCrate2"
+	ui.discovered_crates = [crate1, crate2]
+	
+	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
+	ui.backpack_inventory = bp_inv
+	
+	# Start Left=Vault 1 (0), Right=Vault 2 (1)
+	ui.left_container_type = HexInventoryUI.ContainerType.GROUND_CRATE
+	ui.selected_left_crate_idx = 0
+	ui.right_container_type = HexInventoryUI.ContainerType.GROUND_CRATE
+	ui.selected_right_crate_idx = 1
+	
+	ui._rebuild_tab_bar(left_bar, true)
+	ui._rebuild_tab_bar(right_bar, false)
+	
+	# Left bar children: [CrateTab_0, CrateTab_1, BackpackTab]
+	var btn_vault1: Button = left_bar.get_node_or_null("CrateTab_0") as Button
+	var btn_vault2: Button = left_bar.get_node_or_null("CrateTab_1") as Button
+	var btn_bp: Button = left_bar.get_node_or_null("BackpackTab") as Button
+	
+	# 1. Click Backpack button on Left bar
+	btn_bp.emit_signal(&"pressed")
+	var step1_ok: bool = (ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_right_crate_idx == 1)
+	
+	# 2. Click Vault 1 button on Left bar
+	var btn_vault1_after: Button = left_bar.get_node_or_null("CrateTab_0") as Button
+	btn_vault1_after.emit_signal(&"pressed")
+	var step2_ok: bool = (ui.left_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_left_crate_idx == 0 and ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_right_crate_idx == 1)
+	
+	# 3. Click Vault 2 button on Left bar (Swap with Right!)
+	var btn_vault2_after: Button = left_bar.get_node_or_null("CrateTab_1") as Button
+	btn_vault2_after.emit_signal(&"pressed")
+	var step3_ok: bool = (ui.left_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_left_crate_idx == 1 and ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_right_crate_idx == 0)
+	
+	crate1.free()
+	crate2.free()
+	bp_inv.free()
+	left_bar.free()
+	right_bar.free()
+	ui.free()
+	
+	var passed: bool = step1_ok and step2_ok and step3_ok
+	return {
+		"name": "test_tab_button_signal_binding",
+		"passed": passed,
+		"message": "Button pressed signals with bound arguments correctly routed and executed without closure variable capture errors"
 	}

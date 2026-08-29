@@ -92,19 +92,30 @@ func _update_terrain_occlusion(delta: float) -> void:
 	if cam_to_target_dist < 1.0:
 		return
 	
-	var sled_basis: Basis = target_node.global_transform.basis
-	var sled_forward: Vector3 = -sled_basis.z.normalized()
-	var sled_right: Vector3 = sled_basis.x.normalized()
-	
-	# Ray targets strictly placed ON the sled's physical hull bounds
-	var ray_targets: Array[Dictionary] = [
-		{"pos": target_center, "weight": 1.0}, # Direct central chassis core
-		{"pos": target_center + sled_forward * 0.7, "weight": 0.90}, # Sled nose
-		{"pos": target_center - sled_forward * 0.7, "weight": 0.90}, # Sled tail
-		{"pos": target_center + sled_right * 0.35, "weight": 0.85}, # Right rail
-		{"pos": target_center - sled_right * 0.35, "weight": 0.85}, # Left rail
-		{"pos": target_center + Vector3(0, 0.45, 0), "weight": 0.90} # Pilot cabin height
-	]
+	var ray_targets: Array[Dictionary] = []
+	if target_node is CharacterBody3D and not ("is_occupied" in target_node):
+		# Target is Pilot on foot: distribute rays across head, chest, hips, and lateral profile
+		var p_right: Vector3 = target_node.global_transform.basis.x.normalized()
+		ray_targets = [
+			{"pos": target_center, "weight": 1.0}, # Central core / pelvis
+			{"pos": target_center + Vector3(0, 0.65, 0), "weight": 0.95}, # Head
+			{"pos": target_center - Vector3(0, 0.45, 0), "weight": 0.85}, # Lower legs
+			{"pos": target_center + p_right * 0.35, "weight": 0.85}, # Right flank
+			{"pos": target_center - p_right * 0.35, "weight": 0.85}  # Left flank
+		]
+	else:
+		# Target is Sled / Vehicle chassis
+		var sled_basis: Basis = target_node.global_transform.basis
+		var sled_forward: Vector3 = -sled_basis.z.normalized()
+		var sled_right: Vector3 = sled_basis.x.normalized()
+		ray_targets = [
+			{"pos": target_center, "weight": 1.0}, # Direct central chassis core
+			{"pos": target_center + sled_forward * 0.7, "weight": 0.90}, # Sled nose
+			{"pos": target_center - sled_forward * 0.7, "weight": 0.90}, # Sled tail
+			{"pos": target_center + sled_right * 0.35, "weight": 0.85}, # Right rail
+			{"pos": target_center - sled_right * 0.35, "weight": 0.85}, # Left rail
+			{"pos": target_center + Vector3(0, 0.45, 0), "weight": 0.90} # Pilot cabin height
+		]
 	
 	var active_mesh_weights: Dictionary = {} # MeshInstance3D -> max_weight
 	
@@ -115,13 +126,17 @@ func _update_terrain_occlusion(delta: float) -> void:
 	for entry: Dictionary in ray_targets:
 		var ray_dest: Vector3 = entry["pos"]
 		var ray_weight: float = entry["weight"]
-		var ray_dist: float = cam_pos.distance_to(ray_dest)
+		var ray_dir: Vector3 = (ray_dest - cam_pos).normalized()
+		var total_ray_dist: float = cam_pos.distance_to(ray_dest)
 		
-		var exclude_list: Array[RID] = base_exclude.duplicate()
+		var cur_ray_from: Vector3 = cam_pos
 		
-		for _hit_step in range(8):
-			var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(cam_pos, ray_dest, 1) # Layer 1 = World Terrain & Props
-			query.exclude = exclude_list
+		for _hit_step in range(10):
+			if cur_ray_from.distance_to(ray_dest) < 0.25:
+				break
+				
+			var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(cur_ray_from, ray_dest, 1) # Layer 1 = World Terrain & Props
+			query.exclude = base_exclude
 			
 			var result: Dictionary = space_state.intersect_ray(query)
 			if result.is_empty():
@@ -129,11 +144,12 @@ func _update_terrain_occlusion(delta: float) -> void:
 				
 			var hit_pos: Vector3 = result.get("position", Vector3.ZERO)
 			var hit_normal: Vector3 = result.get("normal", Vector3.UP)
-			var hit_dist: float = cam_pos.distance_to(hit_pos)
+			var hit_dist_from_cam: float = cam_pos.distance_to(hit_pos)
 			var collider: Object = result.get("collider")
+			var shape_id: int = result.get("shape", -1)
 			
-			if collider is CollisionObject3D:
-				exclude_list.append((collider as CollisionObject3D).get_rid())
+			# Advance ray origin past the hit boundary so the ray pierces through the structure to find internal/rear walls
+			cur_ray_from = hit_pos + (ray_dir * 0.15)
 			
 			# 1. Reject ground/floor surfaces beneath and around sled
 			var is_floor_contact: bool = (hit_normal.y > floor_normal_threshold_y) and (hit_pos.y <= sled_floor_y + min_occlusion_clearance_y_m)
@@ -145,9 +161,8 @@ func _update_terrain_occlusion(delta: float) -> void:
 				continue
 			
 			# 3. Must be situated in the foreground between camera and target
-			if hit_dist < (ray_dist - 1.6):
+			if hit_dist_from_cam < (total_ray_dist - 0.6):
 				if collider is Node:
-					var shape_id: int = result.get("shape", -1)
 					var meshes: Array[MeshInstance3D] = []
 					_collect_hit_mesh_instances(collider as Node, shape_id, meshes)
 					for mi: MeshInstance3D in meshes:
@@ -231,17 +246,7 @@ func _collect_hit_mesh_instances(collider: Object, shape_id: int, out_meshes: Ar
 		var shape_owner: Object = (collider as CollisionObject3D).shape_owner_get_owner(owner_id)
 		if shape_owner is CollisionShape3D:
 			var shape_name: String = (shape_owner as CollisionShape3D).name
-			
-			# Check if there is a direct corresponding mesh for this specific collision shape
-			var target_mesh_name: String = ""
-			if shape_name.ends_with("Collision"):
-				target_mesh_name = shape_name.trim_suffix("Collision") + "Mesh"
-			elif shape_name.begins_with("Col"):
-				target_mesh_name = shape_name.trim_prefix("Col") + "Mesh"
-			else:
-				target_mesh_name = shape_name + "Mesh"
-				
-			var specific_mesh: MeshInstance3D = col_node.find_child(target_mesh_name, true, false) as MeshInstance3D
+			var specific_mesh: MeshInstance3D = _find_matching_mesh_for_collision_shape(col_node, shape_name)
 			if specific_mesh and is_instance_valid(specific_mesh) and specific_mesh.name != "OcclusionShadowProxy":
 				if _is_mesh_eligible_for_occlusion(specific_mesh):
 					if not out_meshes.has(specific_mesh):
@@ -250,6 +255,30 @@ func _collect_hit_mesh_instances(collider: Object, shape_id: int, out_meshes: Ar
 	
 	# 2. Fallback: if no specific sub-mesh was mapped, collect from the root object (or HexWorldTile)
 	_collect_mesh_instances(col_node, out_meshes)
+
+func _find_matching_mesh_for_collision_shape(col_node: Node, shape_name: String) -> MeshInstance3D:
+	var candidates: Array[String] = []
+	if shape_name.ends_with("Collision"):
+		var base: String = shape_name.trim_suffix("Collision")
+		candidates.append(base + "Mesh")
+		candidates.append(base + "SlidingDoor")
+		candidates.append(base)
+		if base.ends_with("Door"):
+			var side: String = base.trim_suffix("Door") # "Left" or "Right"
+			candidates.append(side + "SlidingDoor")
+	elif shape_name.begins_with("Col"):
+		var base: String = shape_name.trim_prefix("Col")
+		candidates.append(base + "Mesh")
+		candidates.append(base)
+	else:
+		candidates.append(shape_name + "Mesh")
+		candidates.append(shape_name)
+		
+	for c_name: String in candidates:
+		var mi: MeshInstance3D = col_node.find_child(c_name, true, false) as MeshInstance3D
+		if mi and is_instance_valid(mi):
+			return mi
+	return null
 
 func _is_mesh_eligible_for_occlusion(node: Node) -> bool:
 	if not node:

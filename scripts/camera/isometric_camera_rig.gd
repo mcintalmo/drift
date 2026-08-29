@@ -147,8 +147,9 @@ func _update_terrain_occlusion(delta: float) -> void:
 			# 3. Must be situated in the foreground between camera and target
 			if hit_dist < (ray_dist - 1.6):
 				if collider is Node:
+					var shape_id: int = result.get("shape", -1)
 					var meshes: Array[MeshInstance3D] = []
-					_collect_mesh_instances(collider as Node, meshes)
+					_collect_hit_mesh_instances(collider as Node, shape_id, meshes)
 					for mi: MeshInstance3D in meshes:
 						var prev_w: float = active_mesh_weights.get(mi, 0.0)
 						active_mesh_weights[mi] = maxf(prev_w, ray_weight)
@@ -218,6 +219,51 @@ func _update_terrain_occlusion(delta: float) -> void:
 	for mi: MeshInstance3D in to_remove:
 		_occluded_meshes.erase(mi)
 
+func _collect_hit_mesh_instances(collider: Object, shape_id: int, out_meshes: Array[MeshInstance3D]) -> void:
+	if not collider or not (collider is Node):
+		return
+		
+	var col_node: Node = collider as Node
+	
+	# 1. If this is a composite body with distinct collision shapes (like ArmoredBoxcar)
+	if collider is CollisionObject3D and shape_id >= 0 and collider.has_method("shape_find_owner"):
+		var owner_id: int = (collider as CollisionObject3D).shape_find_owner(shape_id)
+		var shape_owner: Object = (collider as CollisionObject3D).shape_owner_get_owner(owner_id)
+		if shape_owner is CollisionShape3D:
+			var shape_name: String = (shape_owner as CollisionShape3D).name
+			
+			# Check if there is a direct corresponding mesh for this specific collision shape
+			var target_mesh_name: String = ""
+			if shape_name.ends_with("Collision"):
+				target_mesh_name = shape_name.trim_suffix("Collision") + "Mesh"
+			elif shape_name.begins_with("Col"):
+				target_mesh_name = shape_name.trim_prefix("Col") + "Mesh"
+			else:
+				target_mesh_name = shape_name + "Mesh"
+				
+			var specific_mesh: MeshInstance3D = col_node.find_child(target_mesh_name, true, false) as MeshInstance3D
+			if specific_mesh and is_instance_valid(specific_mesh) and specific_mesh.name != "OcclusionShadowProxy":
+				if _is_mesh_eligible_for_occlusion(specific_mesh):
+					if not out_meshes.has(specific_mesh):
+						out_meshes.append(specific_mesh)
+					return
+	
+	# 2. Fallback: if no specific sub-mesh was mapped, collect from the root object (or HexWorldTile)
+	_collect_mesh_instances(col_node, out_meshes)
+
+func _is_mesh_eligible_for_occlusion(node: Node) -> bool:
+	if not node:
+		return false
+	if node is GroundCrate or node.is_in_group(&"loot_crates") or node.name.begins_with("VaultCrate") or node.name.begins_with("GroundCrate"):
+		return false
+	if node.name.ends_with("SlidingDoor") or node.name.ends_with("Lock") or node.name == "MagneticLock":
+		var car: Node = _find_parent_train_car(node)
+		if car and int(car.get("car_state")) == 0: # CarState.LOCKED
+			return false
+	if node.is_in_group(&"interactable_doors") or node.get_meta("opaque_interactable", false):
+		return false
+	return true
+
 func _collect_mesh_instances(node: Node, out_meshes: Array[MeshInstance3D]) -> void:
 	if not node:
 		return
@@ -233,17 +279,7 @@ func _collect_mesh_instances_recursive(node: Node, out_meshes: Array[MeshInstanc
 	if not node:
 		return
 		
-	# 1. Exclude crates: loot crates must always remain 100% opaque
-	if node is GroundCrate or node.is_in_group(&"loot_crates") or node.name.begins_with("VaultCrate") or node.name.begins_with("GroundCrate"):
-		return
-		
-	# 2. Exclude doors ONLY while locked/interactable; once open/unlocked, allow them to fade with the car
-	if node.name.ends_with("SlidingDoor") or node.name.ends_with("Lock") or node.name == "MagneticLock":
-		var car: Node = _find_parent_train_car(node)
-		if car and int(car.get("car_state")) == 0: # CarState.LOCKED
-			return
-			
-	if node.is_in_group(&"interactable_doors") or node.get_meta("opaque_interactable", false):
+	if not _is_mesh_eligible_for_occlusion(node):
 		return
 		
 	if node is MeshInstance3D and node.name != "OcclusionShadowProxy":

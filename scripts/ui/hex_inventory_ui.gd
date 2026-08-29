@@ -314,10 +314,19 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 	var active_type: ContainerType = left_container_type if is_left else right_container_type
 	var selected_crate_idx: int = selected_left_crate_idx if is_left else selected_right_crate_idx
 	
-	# 1. Add Dynamic Crate Tabs
+	var other_type: ContainerType = right_container_type if is_left else left_container_type
+	var other_crate_idx: int = selected_right_crate_idx if is_left else selected_left_crate_idx
+	
+	# 1. Add Dynamic Crate Tabs (omit if open on the opposite panel)
 	for i: int in range(discovered_crates.size()):
 		var crate: GroundCrate = discovered_crates[i]
 		if not is_instance_valid(crate):
+			continue
+			
+		var is_this_active: bool = (active_type == ContainerType.GROUND_CRATE and selected_crate_idx == i)
+		var is_open_on_other: bool = (other_type == ContainerType.GROUND_CRATE and other_crate_idx == i)
+		
+		if is_open_on_other and not is_this_active:
 			continue
 			
 		var btn: Button = Button.new()
@@ -326,8 +335,7 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.text = _format_crate_tab_name(crate, i)
 		
-		var is_active: bool = (active_type == ContainerType.GROUND_CRATE and selected_crate_idx == i)
-		btn.add_theme_stylebox_override(&"normal", active_tab_style if is_active else inactive_tab_style)
+		btn.add_theme_stylebox_override(&"normal", active_tab_style if is_this_active else inactive_tab_style)
 		
 		var target_idx: int = i
 		if is_left:
@@ -336,30 +344,32 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 			btn.pressed.connect(func() -> void: _set_right_container(ContainerType.GROUND_CRATE, target_idx))
 		tab_bar.add_child(btn)
 		
-	# 2. Add Backpack Tab
-	var bp_btn: Button = Button.new()
-	bp_btn.name = "BackpackTab"
-	bp_btn.custom_minimum_size = Vector2(0, 26)
-	bp_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bp_btn.text = "Backpack"
-	var bp_active: bool = (active_type == ContainerType.PILOT_BACKPACK)
-	bp_btn.disabled = (backpack_inventory == null)
-	bp_btn.add_theme_stylebox_override(&"normal", active_tab_style if bp_active else inactive_tab_style)
-	if is_left:
-		bp_btn.pressed.connect(func() -> void: _set_left_container(ContainerType.PILOT_BACKPACK))
-	else:
-		bp_btn.pressed.connect(func() -> void: _set_right_container(ContainerType.PILOT_BACKPACK))
-	tab_bar.add_child(bp_btn)
+	# 2. Add Backpack Tab (omit if open on the opposite panel)
+	var is_backpack_active: bool = (active_type == ContainerType.PILOT_BACKPACK)
+	var is_backpack_open_on_other: bool = (other_type == ContainerType.PILOT_BACKPACK)
+	if backpack_inventory != null and (not is_backpack_open_on_other or is_backpack_active):
+		var bp_btn: Button = Button.new()
+		bp_btn.name = "BackpackTab"
+		bp_btn.custom_minimum_size = Vector2(0, 26)
+		bp_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bp_btn.text = "Backpack"
+		bp_btn.add_theme_stylebox_override(&"normal", active_tab_style if is_backpack_active else inactive_tab_style)
+		if is_left:
+			bp_btn.pressed.connect(func() -> void: _set_left_container(ContainerType.PILOT_BACKPACK))
+		else:
+			bp_btn.pressed.connect(func() -> void: _set_right_container(ContainerType.PILOT_BACKPACK))
+		tab_bar.add_child(bp_btn)
 	
-	# 3. Add Sled Tab ONLY if sled is within interaction range (sled_inventory != null)
-	if sled_inventory != null:
+	# 3. Add Sled Tab ONLY if sled is within interaction range and NOT open on the opposite panel
+	var is_sled_active: bool = (active_type == ContainerType.SLED_CARGO_POD)
+	var is_sled_open_on_other: bool = (other_type == ContainerType.SLED_CARGO_POD)
+	if sled_inventory != null and (not is_sled_open_on_other or is_sled_active):
 		var sled_btn: Button = Button.new()
 		sled_btn.name = "SledTab"
 		sled_btn.custom_minimum_size = Vector2(0, 26)
 		sled_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		sled_btn.text = "Sled"
-		var sled_active: bool = (active_type == ContainerType.SLED_CARGO_POD)
-		sled_btn.add_theme_stylebox_override(&"normal", active_tab_style if sled_active else inactive_tab_style)
+		sled_btn.add_theme_stylebox_override(&"normal", active_tab_style if is_sled_active else inactive_tab_style)
 		if is_left:
 			sled_btn.pressed.connect(func() -> void: _set_left_container(ContainerType.SLED_CARGO_POD))
 		else:

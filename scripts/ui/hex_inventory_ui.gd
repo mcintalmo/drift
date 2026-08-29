@@ -170,33 +170,38 @@ func _unhandled_input(event: InputEvent) -> void:
 				var is_valid: bool = active_grid.grid_inventory.can_place_item(held_item, active_grid.cursor_cell, held_rotation_step)
 				active_grid.set_custom_drag_preview(held_item, held_rotation_step, active_grid.cursor_cell, is_valid)
 
+var is_pilot_mounted: bool = false
+
 func open_contextual_inventory() -> void:
 	if is_open:
 		return
 		
 	_discover_scene_inventories()
 	
-	if not discovered_crates.is_empty():
-		left_container_type = ContainerType.GROUND_CRATE
+	if not is_pilot_mounted:
+		# On foot on the ground: Backpack is ALWAYS the Left container
+		left_container_type = ContainerType.PILOT_BACKPACK
 		selected_left_crate_idx = 0
-		if discovered_crates.size() > 1:
-			# 2 or more vaults/crates: Left shows Crate 1, Right shows Crate 2
+		if not discovered_crates.is_empty():
 			right_container_type = ContainerType.GROUND_CRATE
-			selected_right_crate_idx = 1
+			selected_right_crate_idx = 0
 		elif sled_inventory:
 			right_container_type = ContainerType.SLED_CARGO_POD
 			selected_right_crate_idx = 0
 		else:
-			right_container_type = ContainerType.PILOT_BACKPACK
-			selected_right_crate_idx = 0
+			right_container_type = ContainerType.NONE
+			selected_right_crate_idx = -1
 	else:
+		# Mounted in sled
 		left_container_type = ContainerType.PILOT_BACKPACK
 		selected_left_crate_idx = 0
 		if sled_inventory:
 			right_container_type = ContainerType.SLED_CARGO_POD
 			selected_right_crate_idx = 0
+		elif not discovered_crates.is_empty():
+			right_container_type = ContainerType.GROUND_CRATE
+			selected_right_crate_idx = 0
 		else:
-			# No crates and no sled: right panel is empty (NONE)
 			right_container_type = ContainerType.NONE
 			selected_right_crate_idx = -1
 	
@@ -245,6 +250,7 @@ func _discover_scene_inventories() -> void:
 	backpack_inventory = null
 	sled_inventory = null
 	sled_com_component = null
+	is_pilot_mounted = (pilot != null and pilot.is_mounted_in_sled)
 	
 	if pilot:
 		backpack_inventory = pilot.get_node_or_null("BackpackInventoryComponent") as HexInventoryComponent
@@ -309,6 +315,10 @@ func _on_right_tab_pressed(type: ContainerType, crate_idx: int) -> void:
 func _set_left_container(type: ContainerType, crate_idx: int = -1) -> void:
 	if held_item:
 		_cancel_drag()
+		
+	# When on foot on the ground, Left panel is locked to Pilot Backpack
+	if not is_pilot_mounted and type != ContainerType.PILOT_BACKPACK:
+		return
 		
 	if type == ContainerType.SLED_CARGO_POD and sled_inventory == null:
 		return
@@ -430,6 +440,23 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 	
 	var other_type: ContainerType = right_container_type if is_left else left_container_type
 	var other_crate_idx: int = selected_right_crate_idx if is_left else selected_left_crate_idx
+	
+	# If on foot on ground and this is the Left bar: Left panel is dedicated to Backpack
+	if not is_pilot_mounted and is_left:
+		if backpack_inventory != null:
+			var is_backpack_active: bool = (active_type == ContainerType.PILOT_BACKPACK)
+			var bp_btn: Button = Button.new()
+			bp_btn.name = "BackpackTab"
+			bp_btn.custom_minimum_size = Vector2(0, 26)
+			bp_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			bp_btn.text = "Backpack"
+			bp_btn.focus_mode = Control.FOCUS_NONE
+			bp_btn.add_theme_stylebox_override(&"normal", active_tab_style if is_backpack_active else inactive_tab_style)
+			bp_btn.add_theme_stylebox_override(&"hover", active_tab_style if is_backpack_active else inactive_tab_style)
+			bp_btn.add_theme_stylebox_override(&"pressed", active_tab_style)
+			bp_btn.pressed.connect(_on_left_tab_pressed.bind(ContainerType.PILOT_BACKPACK, -1))
+			tab_bar.add_child(bp_btn)
+		return
 	
 	# If this is the right panel and no secondary containers exist (no crates, no sled), don't show tabs on right
 	if not is_left and discovered_crates.is_empty() and sled_inventory == null:

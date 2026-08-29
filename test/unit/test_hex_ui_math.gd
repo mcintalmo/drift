@@ -184,6 +184,7 @@ func _test_heavy_cargo_com_shift() -> Dictionary:
 
 func _test_multi_vault_auto_swapping() -> Dictionary:
 	var ui: HexInventoryUI = HexInventoryUI.new()
+	ui.is_pilot_mounted = true # On sled: free container swapping enabled
 	
 	# Simulate 2 discovered vault crates
 	var crate1: GroundCrate = GroundCrate.new()
@@ -245,6 +246,7 @@ func _test_standalone_backpack_display() -> Dictionary:
 
 func _test_vault_to_backpack_switching() -> Dictionary:
 	var ui: HexInventoryUI = HexInventoryUI.new()
+	ui.is_pilot_mounted = true # On sled: free container swapping enabled
 	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
 	ui.backpack_inventory = bp_inv
 	
@@ -293,11 +295,12 @@ func _test_vault_to_backpack_switching() -> Dictionary:
 	return {
 		"name": "test_vault_to_backpack_switching",
 		"passed": passed,
-		"message": "Seamlessly switched and swapped between Vaults and Backpack across Left & Right panels"
+		"message": "Seamlessly switched and swapped between Vaults and Backpack across Left & Right panels on sled"
 	}
 
 func _test_tab_button_signal_binding() -> Dictionary:
 	var ui: HexInventoryUI = HexInventoryUI.new()
+	ui.is_pilot_mounted = true # On sled: free container swapping enabled
 	var left_bar: HBoxContainer = HBoxContainer.new()
 	var right_bar: HBoxContainer = HBoxContainer.new()
 	ui.left_tab_bar = left_bar
@@ -378,28 +381,31 @@ func _test_single_crate_and_backpack_swapping() -> Dictionary:
 	ui.backpack_inventory = bp_inv
 	ui.sled_inventory = null
 	
-	ui.left_container_type = HexInventoryUI.ContainerType.GROUND_CRATE
+	# On the ground: Left=Backpack, Right=Crate
+	ui.left_container_type = HexInventoryUI.ContainerType.PILOT_BACKPACK
 	ui.selected_left_crate_idx = 0
-	ui.right_container_type = HexInventoryUI.ContainerType.PILOT_BACKPACK
+	ui.right_container_type = HexInventoryUI.ContainerType.GROUND_CRATE
+	ui.selected_right_crate_idx = 0
 	
 	ui._rebuild_tab_bar(left_bar, true)
 	ui._rebuild_tab_bar(right_bar, false)
 	
-	# Initial: Left=Crate, Right=Backpack
+	# Initial: Left=Backpack, Right=Crate
 	var init_ok: bool = (
-		ui.left_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
-		ui.selected_left_crate_idx == 0 and
-		ui.right_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK
+		ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and
+		ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
+		ui.selected_right_crate_idx == 0
 	)
 	
-	var btn_crate_left: Button = left_bar.get_node_or_null("CrateTab_0") as Button
-	var no_bp_on_left: bool = (left_bar.get_node_or_null("BackpackTab") == null)
+	# Left bar on ground shows only [BackpackTab]
+	var btn_bp_left: Button = left_bar.get_node_or_null("BackpackTab") as Button
+	var no_crate_on_left: bool = (left_bar.get_node_or_null("CrateTab_0") == null)
 	
-	# Right bar excludes Crate -> shows only [BackpackTab]
-	var btn_bp_right: Button = right_bar.get_node_or_null("BackpackTab") as Button
-	var no_crate_on_right: bool = (right_bar.get_node_or_null("CrateTab_0") == null)
+	# Right bar excludes Backpack -> shows only [CrateTab_0]
+	var btn_crate_right: Button = right_bar.get_node_or_null("CrateTab_0") as Button
+	var no_bp_on_right: bool = (right_bar.get_node_or_null("BackpackTab") == null)
 	
-	var passed: bool = init_ok and (btn_crate_left != null) and no_bp_on_left and (btn_bp_right != null) and no_crate_on_right
+	var passed: bool = init_ok and (btn_bp_left != null) and no_crate_on_left and (btn_crate_right != null) and no_bp_on_right
 	
 	crate1.free()
 	bp_inv.free()
@@ -410,5 +416,5 @@ func _test_single_crate_and_backpack_swapping() -> Dictionary:
 	return {
 		"name": "test_single_crate_and_backpack_swapping",
 		"passed": passed,
-		"message": "When 2 containers are active across Left and Right, each is mutually excluded from the other's tab bar"
+		"message": "When on the ground, Left panel is locked to Backpack and Right panel shows external containers without duplicate tabs"
 	}

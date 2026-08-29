@@ -172,9 +172,10 @@ func _update_terrain_occlusion(delta: float) -> void:
 				break
 	
 	# Register newly discovered occluding meshes with dedicated SHADOWS_ONLY shadow proxies
-	for mi: MeshInstance3D in active_mesh_weights:
-		if not is_instance_valid(mi):
+	for mi_key: Variant in active_mesh_weights.keys():
+		if not is_instance_valid(mi_key) or not (mi_key is MeshInstance3D):
 			continue
+		var mi: MeshInstance3D = mi_key as MeshInstance3D
 		if not _occluded_meshes.has(mi):
 			var mat: StandardMaterial3D = _get_or_create_standard_material(mi)
 			if mat:
@@ -195,18 +196,19 @@ func _update_terrain_occlusion(delta: float) -> void:
 				}
 	
 	# Smoothly interpolate alpha for all tracked meshes
-	var to_remove: Array[MeshInstance3D] = []
-	for mi: MeshInstance3D in _occluded_meshes:
-		if not is_instance_valid(mi):
-			to_remove.append(mi)
+	var to_remove: Array[Variant] = []
+	for mi_key: Variant in _occluded_meshes.keys():
+		if not is_instance_valid(mi_key) or not (mi_key is MeshInstance3D):
+			to_remove.append(mi_key)
 			continue
 			
-		var data: Dictionary = _occluded_meshes[mi]
+		var mi: MeshInstance3D = mi_key as MeshInstance3D
+		var data: Dictionary = _occluded_meshes.get(mi, {})
 		var mat: StandardMaterial3D = data.get("material", null)
 		var proxy: MeshInstance3D = data.get("proxy", null)
 		
-		if not mat or not is_instance_valid(mat):
-			to_remove.append(mi)
+		if not is_instance_valid(mat) or not (mat is StandardMaterial3D):
+			to_remove.append(mi_key)
 			continue
 			
 		var is_occluding: bool = active_mesh_weights.has(mi)
@@ -214,7 +216,7 @@ func _update_terrain_occlusion(delta: float) -> void:
 		var speed: float = fade_out_speed
 		
 		if is_occluding:
-			var weight: float = active_mesh_weights[mi]
+			var weight: float = active_mesh_weights.get(mi, 1.0)
 			target_alpha = lerpf(1.0, occluded_transparency_alpha, weight)
 			speed = fade_in_speed
 			
@@ -229,10 +231,10 @@ func _update_terrain_occlusion(delta: float) -> void:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 			if proxy and is_instance_valid(proxy):
 				proxy.queue_free()
-			to_remove.append(mi)
+			to_remove.append(mi_key)
 			
-	for mi: MeshInstance3D in to_remove:
-		_occluded_meshes.erase(mi)
+	for mi_key: Variant in to_remove:
+		_occluded_meshes.erase(mi_key)
 
 func _collect_hit_mesh_instances(collider: Object, shape_id: int, out_meshes: Array[MeshInstance3D]) -> void:
 	if not collider or not (collider is Node):

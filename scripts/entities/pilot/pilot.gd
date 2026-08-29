@@ -19,6 +19,9 @@ signal mounted_sled_changed(is_mounted: bool)
 @onready var hurtbox_component: HurtboxComponent = $HurtboxComponent
 
 func _ready() -> void:
+	platform_floor_layers = 0
+	platform_wall_layers = 0
+	
 	if health_component:
 		health_component.health_changed.connect(func(cur: float, max_hp: float, delta: float) -> void:
 			pilot_damaged.emit(cur, delta)

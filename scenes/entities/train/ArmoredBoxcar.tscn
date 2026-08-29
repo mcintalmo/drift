@@ -1,10 +1,13 @@
-[gd_scene load_steps=23 format=3 uid="uid://c8m2p9wlap17v"]
+[gd_scene load_steps=24 format=3 uid="uid://c8m2p9wlap17v"]
 
 [ext_resource type="Script" path="res://scripts/entities/world/train_car.gd" id="1_train_car"]
 [ext_resource type="Script" path="res://scripts/components/health_component.gd" id="2_health"]
 [ext_resource type="Script" path="res://scripts/components/hurtbox_component.gd" id="3_hurtbox"]
 [ext_resource type="Script" path="res://scripts/components/grapple_anchor_component.gd" id="4_anchor"]
 [ext_resource type="PackedScene" path="res://scenes/containers/GroundCrate.tscn" id="5_crate"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_solid_cabin"]
+size = Vector3(4.0, 3.8, 9.4)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
 size = Vector3(4.2, 0.4, 9.8)
@@ -78,6 +81,10 @@ script = ExtResource("1_train_car")
 car_length_m = 9.8
 car_width_m = 4.0
 car_height_m = 4.4
+
+[node name="SolidCabinCollision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
+shape = SubResource("BoxShape3D_solid_cabin")
 
 [node name="FloorCollision" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)

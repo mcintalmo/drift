@@ -74,11 +74,18 @@ func _ready() -> void:
 		door_health_comp.died.connect(breach_doors)
 		
 	_setup_geometry_if_missing()
+	_update_solid_cabin_collision()
 	_update_child_crates_state()
 
 func set_car_state(new_state: CarState) -> void:
 	car_state = new_state
+	_update_solid_cabin_collision()
 	_update_child_crates_state()
+
+func _update_solid_cabin_collision() -> void:
+	var solid_col: CollisionShape3D = get_node_or_null("SolidCabinCollision") as CollisionShape3D
+	if solid_col:
+		solid_col.set_deferred("disabled", car_state == CarState.UNLOCKED)
 
 func _update_child_crates_state() -> void:
 	for child: Node in find_children("*", "", true, false):
@@ -117,14 +124,6 @@ func set_platform_transform(new_pos: Vector3, new_rot: Vector3, delta: float) ->
 ## Precision Stealth Plasma Torch Channel (Continuous welding interaction)
 func interact_plasma_torch(player: Node3D, donut: Node) -> void:
 	if car_state == CarState.UNLOCKED:
-		return
-		
-	# Requirement: Train car must be decoupled from locomotive before sliding doors can be unlocked
-	if is_coupled:
-		if player and player.is_inside_tree():
-			var huds: Array[Node] = player.get_tree().root.find_children("*HUD*", "HUD", true, false)
-			if not huds.is_empty() and huds[0].has_method("show_banner"):
-				huds[0].call("show_banner", "CAR MUST BE DECOUPLED FROM TRAIN FIRST!")
 		return
 		
 	# Determine nearest door lock to player (Left lock at X=-2.18 vs Right lock at X=+2.18)

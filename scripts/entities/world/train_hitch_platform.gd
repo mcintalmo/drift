@@ -6,9 +6,29 @@ extends TrainCar
 
 func _ready() -> void:
 	super._ready()
-	car_length_m = 2.8
-	car_width_m = 2.8
-	car_height_m = 1.8
+	car_length_m = 3.2
+	car_width_m = 3.2
+	car_height_m = 2.0
+
+## Precision hold-to-interact cutting of the magnetic coupler mechanism
+func interact_plasma_torch(player: Node3D, donut: Node) -> void:
+	if not is_coupled:
+		return
+		
+	if donut and donut.has_method("start_channel"):
+		donut.start_channel(
+			"Cutting Magnetic Coupler Lock...",
+			2.0,
+			func() -> void:
+				uncouple_car(),
+			func() -> void:
+				pass, # Cancelled on button release
+			coupler_vis if coupler_vis else self,
+			player,
+			4.5
+		)
+	else:
+		uncouple_car()
 
 ## Overrides uncouple to disconnect trailing train cars when this hitch is severed
 func uncouple_car() -> void:

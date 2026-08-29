@@ -7,7 +7,7 @@
 [ext_resource type="PackedScene" path="res://scenes/containers/GroundCrate.tscn" id="5_crate"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_body"]
-size = Vector3(3.2, 3.2, 8.4)
+size = Vector3(4.2, 4.4, 9.8)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rust"]
 albedo_color = Color(0.48, 0.26, 0.18, 1)
@@ -16,7 +16,7 @@ roughness = 0.7
 
 [sub_resource type="BoxMesh" id="BoxMesh_body"]
 material = SubResource("StandardMaterial3D_rust")
-size = Vector3(3.0, 3.0, 8.4)
+size = Vector3(4.0, 3.8, 9.8)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_door"]
 albedo_color = Color(0.32, 0.35, 0.38, 1)
@@ -25,7 +25,7 @@ roughness = 0.45
 
 [sub_resource type="BoxMesh" id="BoxMesh_door"]
 material = SubResource("StandardMaterial3D_door")
-size = Vector3(0.15, 2.6, 2.8)
+size = Vector3(0.18, 3.0, 3.2)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mag_lock"]
 albedo_color = Color(0.9, 0.2, 0.1, 1)
@@ -35,39 +35,39 @@ emission_energy_multiplier = 4.0
 
 [sub_resource type="BoxMesh" id="BoxMesh_lock"]
 material = SubResource("StandardMaterial3D_mag_lock")
-size = Vector3(0.35, 0.35, 0.35)
+size = Vector3(0.4, 0.4, 0.4)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_lock_hurtbox"]
-size = Vector3(0.6, 0.6, 0.6)
+size = Vector3(0.8, 0.8, 0.8)
 
 [node name="ArmoredBoxcar" type="AnimatableBody3D" groups=["train_convoy"]]
 collision_layer = 1
 collision_mask = 7
 script = ExtResource("1_train_car")
-car_length_m = 8.5
-car_width_m = 3.2
-car_height_m = 3.6
+car_length_m = 9.8
+car_width_m = 4.0
+car_height_m = 4.4
 
 [node name="BoxcarCollision" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
 shape = SubResource("BoxShape3D_body")
 
 [node name="VisualModel" type="Node3D" parent="."]
 
 [node name="BodyMesh" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.9, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.1, 0)
 mesh = SubResource("BoxMesh_body")
 
 [node name="LeftSlidingDoor" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.55, 1.7, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.05, 1.9, 0)
 mesh = SubResource("BoxMesh_door")
 
 [node name="RightSlidingDoor" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.55, 1.7, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.05, 1.9, 0)
 mesh = SubResource("BoxMesh_door")
 
 [node name="MagneticLock" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.65, 1.7, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.15, 1.9, 0)
 mesh = SubResource("BoxMesh_lock")
 
 [node name="DoorHealthComponent" type="Node" parent="."]
@@ -75,7 +75,7 @@ script = ExtResource("2_health")
 max_health = 60.0
 
 [node name="DoorHurtbox" type="Area3D" parent="." node_paths=PackedStringArray("health_component")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.6, 1.7, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.1, 1.9, 0)
 collision_layer = 16
 collision_mask = 8
 script = ExtResource("3_hurtbox")
@@ -86,15 +86,15 @@ is_breach_target = true
 shape = SubResource("BoxShape3D_lock_hurtbox")
 
 [node name="RoofGrappleAnchor" type="Node3D" parent="." groups=["grapple_anchors"]]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.6, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.2, 0)
 script = ExtResource("4_anchor")
 anchor_type = 2
 is_roof_boarding_anchor = true
 
 [node name="VaultCrate1" parent="." instance=ExtResource("5_crate")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -1.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -2.0)
 crate_variant = 2
 
 [node name="VaultCrate2" parent="." instance=ExtResource("5_crate")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 1.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 2.0)
 crate_variant = 1

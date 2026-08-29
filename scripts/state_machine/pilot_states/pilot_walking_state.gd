@@ -52,8 +52,22 @@ func physics_update(delta: float) -> void:
 				if w_comp and w_comp.get("is_tethered") == true and w_comp.has_method("detach_tether"):
 					w_comp.call("detach_tether")
 	
-	# Check attack / breach trigger
-	if Input.is_action_just_pressed(&"pilot_melee_breach") and weapon_socket:
+	# Hold-to-Interact Plasma Torch / Coupler Cutting Channel (E / F / LMB)
+	var is_interact_held: bool = Input.is_action_pressed(&"pilot_interact") or Input.is_action_pressed(&"pilot_melee_breach")
+	var donut: ActionProgressDonut = _get_action_donut()
+	
+	if is_interact_held:
+		if donut and not donut.is_channeling:
+			var target_interactable: Node = _find_nearby_interact_target()
+			if target_interactable and target_interactable.has_method("interact_plasma_torch"):
+				target_interactable.call("interact_plasma_torch", pilot, donut)
+	else:
+		# Released interact/attack button while channeling -> cancel and reset donut
+		if donut and donut.is_channeling:
+			donut.cancel_channel()
+	
+	# Melee weapon slash trigger (tap LMB when not channeling)
+	if Input.is_action_just_pressed(&"pilot_melee_breach") and weapon_socket and (not donut or not donut.is_channeling):
 		weapon_socket.trigger_attack()
 	
 	# Query backpack mass and center-of-mass offset
@@ -156,7 +170,35 @@ func physics_update(delta: float) -> void:
 	
 	pilot.move_and_slide()
 
-## Detects if the pilot is standing on or riding a TrainCar
+## Finds nearest interactable coupler or lock within interaction range
+func _find_nearby_interact_target() -> Node:
+	if not pilot or not pilot.is_inside_tree():
+		return null
+		
+	var p_pos: Vector3 = pilot.global_position
+	var min_dist: float = 4.2
+	var best_target: Node = null
+	
+	var convoy: Array[Node] = pilot.get_tree().get_nodes_in_group(&"train_convoy")
+	for node: Node in convoy:
+		if is_instance_valid(node):
+			var n_pos: Vector3 = node.global_position if node.is_inside_tree() else (node as Node3D).position
+			var dist: float = p_pos.distance_to(n_pos)
+			if dist < min_dist:
+				min_dist = dist
+				best_target = node
+				
+	return best_target
+
+func _get_action_donut() -> ActionProgressDonut:
+	if not pilot or not pilot.is_inside_tree():
+		return null
+	var donuts: Array[Node] = pilot.get_tree().get_nodes_in_group(&"action_donut")
+	if not donuts.is_empty() and donuts[0] is ActionProgressDonut:
+		return donuts[0] as ActionProgressDonut
+	return null
+
+## Detects if the pilot is standing on or riding a TrainCar or CircularHitchPlatform
 func _get_riding_train_car() -> TrainCar:
 	if not pilot or not pilot.is_inside_tree():
 		return null
@@ -171,11 +213,11 @@ func _get_riding_train_car() -> TrainCar:
 				if car:
 					return car
 					
-	# 2. Downward probe raycast (within 1.2m below feet)
+	# 2. Downward probe raycast (within 1.4m below feet)
 	var space_state: PhysicsDirectSpaceState3D = pilot.get_world_3d().direct_space_state
 	if space_state:
 		var start: Vector3 = pilot.global_position + Vector3(0, 0.4, 0)
-		var end: Vector3 = pilot.global_position + Vector3(0, -1.2, 0)
+		var end: Vector3 = pilot.global_position + Vector3(0, -1.4, 0)
 		var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(start, end)
 		query.exclude = [pilot.get_rid()]
 		var res: Dictionary = space_state.intersect_ray(query)
@@ -185,14 +227,14 @@ func _get_riding_train_car() -> TrainCar:
 			if car:
 				return car
 				
-	# 3. Proximity check within train car roof local bounding box
+	# 3. Proximity check within train car roof or turntable local bounding box
 	var convoy: Array[Node] = pilot.get_tree().get_nodes_in_group(&"train_convoy")
 	for node: Node in convoy:
 		if node is TrainCar and node.visible:
 			var car: TrainCar = node as TrainCar
 			var local_pos: Vector3 = car.global_transform.affine_inverse() * pilot.global_position
-			# Train car bounds: X in [-1.8, 1.8], Z in [-4.8, 4.8], Y in [0.5, 4.8] (roof + lowered hitch platforms)
-			if absf(local_pos.x) <= 1.8 and absf(local_pos.z) <= 4.8 and local_pos.y >= 0.5 and local_pos.y <= 4.8:
+			# Enlarged train car & turntable bounds
+			if absf(local_pos.x) <= 2.4 and absf(local_pos.z) <= 5.8 and local_pos.y >= 0.4 and local_pos.y <= 5.8:
 				return car
 				
 	return null

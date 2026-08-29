@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/ui/action_progress_donut.gd" id="1_donut"]
 
-[node name="ActionProgressDonut" type="Control"]
+[node name="ActionProgressDonut" type="Control" groups=["action_donut"]]
 layout_mode = 3
 anchors_preset = 8
 anchor_left = 0.5

@@ -12,8 +12,8 @@ signal car_decoupled(car_index: int)
 @export var cruise_speed_ms: float = 14.0
 @export var acceleration_ms2: float = 3.5
 @export var start_delay_seconds: float = 4.0
-@export var car_spacing_m: float = 10.0
-@export var bogie_wheelbase_m: float = 6.4
+@export var car_spacing_m: float = 15.0
+@export var bogie_wheelbase_m: float = 7.5
 @export var train_cars: Array[TrainCar] = []
 @export var hitch_platforms: Array[TrainCar] = []
 

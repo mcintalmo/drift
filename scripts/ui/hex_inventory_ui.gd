@@ -213,7 +213,8 @@ func _discover_scene_inventories() -> void:
 		for c: Node in all_crates:
 			if c is GroundCrate and is_instance_valid(c):
 				var crate: GroundCrate = c as GroundCrate
-				if crate.crate_state == GroundCrate.CrateState.NON_INTERACTABLE:
+				# Only include UNLOOTED (unlocked) crates in the inventory tabs
+				if crate.crate_state != GroundCrate.CrateState.UNLOOTED:
 					continue
 				if crate.global_position.distance_to(pilot.global_position) <= 4.5:
 					discovered_crates.append(crate)
@@ -350,16 +351,10 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 	tab_bar.add_child(sled_btn)
 
 func _format_crate_tab_name(crate: GroundCrate, idx: int) -> String:
-	var label: String = ""
 	if crate.name.begins_with("VaultCrate"):
 		var suffix: String = crate.name.replace("VaultCrate", "")
-		label = "Vault %s" % suffix
-	else:
-		label = "Crate #%d" % (idx + 1)
-		
-	if crate.crate_state == GroundCrate.CrateState.LOCKED:
-		label += " [LOCKED]"
-	return label
+		return "Vault %s" % suffix
+	return "Crate #%d" % (idx + 1)
 
 func _update_load_label(lbl: Label, inv: HexInventoryComponent, type: ContainerType, is_left: bool) -> void:
 	if not lbl:

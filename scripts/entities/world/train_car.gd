@@ -47,8 +47,8 @@ var prev_yaw_rad: float = 0.0
 @onready var grapple_anchor: GrappleAnchorComponent = get_node_or_null("GrappleAnchorComponent") as GrappleAnchorComponent
 @onready var left_door: Node3D = get_node_or_null("VisualModel/LeftSlidingDoor") as Node3D
 @onready var right_door: Node3D = get_node_or_null("VisualModel/RightSlidingDoor") as Node3D
-@onready var left_lock_vis: MeshInstance3D = get_node_or_null("VisualModel/LeftLock") as MeshInstance3D
-@onready var right_lock_vis: MeshInstance3D = get_node_or_null("VisualModel/RightLock") as MeshInstance3D
+@onready var left_lock_vis: MeshInstance3D = (get_node_or_null("VisualModel/LeftSlidingDoor/LeftLock") if get_node_or_null("VisualModel/LeftSlidingDoor/LeftLock") else get_node_or_null("VisualModel/LeftLock")) as MeshInstance3D
+@onready var right_lock_vis: MeshInstance3D = (get_node_or_null("VisualModel/RightSlidingDoor/RightLock") if get_node_or_null("VisualModel/RightSlidingDoor/RightLock") else get_node_or_null("VisualModel/RightLock")) as MeshInstance3D
 @onready var lock_vis: MeshInstance3D = get_node_or_null("VisualModel/MagneticLock") as MeshInstance3D
 @onready var coupler_vis: MeshInstance3D = get_node_or_null("VisualModel/CouplerVisual") as MeshInstance3D
 

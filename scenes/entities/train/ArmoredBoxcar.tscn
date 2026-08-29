@@ -161,9 +161,20 @@ mesh = SubResource("BoxMesh_lintel")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.08, 2.0, 0)
 mesh = SubResource("BoxMesh_door")
 
-[node name="LeftLock" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.18, 2.0, 0)
+[node name="LeftLock" type="MeshInstance3D" parent="VisualModel/LeftSlidingDoor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.1, 0, 0)
 mesh = SubResource("BoxMesh_lock")
+
+[node name="DoorHurtbox" type="Area3D" parent="VisualModel/LeftSlidingDoor" node_paths=PackedStringArray("health_component")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.07, 0, 0)
+collision_layer = 16
+collision_mask = 8
+script = ExtResource("3_hurtbox")
+health_component = NodePath("../../../DoorHealthComponent")
+is_breach_target = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="VisualModel/LeftSlidingDoor/DoorHurtbox"]
+shape = SubResource("BoxShape3D_lock_hurtbox")
 
 [node name="RightWallFrontMesh" type="MeshInstance3D" parent="VisualModel"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.0, 2.2, -3.2)
@@ -181,9 +192,20 @@ mesh = SubResource("BoxMesh_lintel")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.08, 2.0, 0)
 mesh = SubResource("BoxMesh_door")
 
-[node name="RightLock" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.18, 2.0, 0)
+[node name="RightLock" type="MeshInstance3D" parent="VisualModel/RightSlidingDoor"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.1, 0, 0)
 mesh = SubResource("BoxMesh_lock")
+
+[node name="RightDoorHurtbox" type="Area3D" parent="VisualModel/RightSlidingDoor" node_paths=PackedStringArray("health_component")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.07, 0, 0)
+collision_layer = 16
+collision_mask = 8
+script = ExtResource("3_hurtbox")
+health_component = NodePath("../../../DoorHealthComponent")
+is_breach_target = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="VisualModel/RightSlidingDoor/RightDoorHurtbox"]
+shape = SubResource("BoxShape3D_lock_hurtbox")
 
 [node name="InteriorWorkLight" type="OmniLight3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.6, 0)
@@ -194,28 +216,6 @@ omni_range = 12.0
 [node name="DoorHealthComponent" type="Node" parent="."]
 script = ExtResource("2_health")
 max_health = 60.0
-
-[node name="DoorHurtbox" type="Area3D" parent="." node_paths=PackedStringArray("health_component")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.15, 2.0, 0)
-collision_layer = 16
-collision_mask = 8
-script = ExtResource("3_hurtbox")
-health_component = NodePath("../DoorHealthComponent")
-is_breach_target = true
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="DoorHurtbox"]
-shape = SubResource("BoxShape3D_lock_hurtbox")
-
-[node name="RightDoorHurtbox" type="Area3D" parent="." node_paths=PackedStringArray("health_component")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.15, 2.0, 0)
-collision_layer = 16
-collision_mask = 8
-script = ExtResource("3_hurtbox")
-health_component = NodePath("../DoorHealthComponent")
-is_breach_target = true
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="RightDoorHurtbox"]
-shape = SubResource("BoxShape3D_lock_hurtbox")
 
 [node name="RoofGrappleAnchor" type="Node3D" parent="." groups=["grapple_anchors"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.4, 0)

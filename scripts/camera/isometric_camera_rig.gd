@@ -222,11 +222,16 @@ func _collect_mesh_instances(node: Node, out_meshes: Array[MeshInstance3D]) -> v
 	if not node:
 		return
 		
-	# Exclude interactable objects: crates, sliding doors, and locks must remain 100% opaque
+	# 1. Exclude crates: loot crates must always remain 100% opaque
 	if node is GroundCrate or node.is_in_group(&"loot_crates") or node.name.begins_with("VaultCrate") or node.name.begins_with("GroundCrate"):
 		return
+		
+	# 2. Exclude doors ONLY while locked/interactable; once open/unlocked, allow them to fade with the car
 	if node.name.ends_with("SlidingDoor") or node.name.ends_with("Lock") or node.name == "MagneticLock":
-		return
+		var car: Node = _find_parent_train_car(node)
+		if car and int(car.get("car_state")) == 0: # CarState.LOCKED
+			return
+			
 	if node.is_in_group(&"interactable_doors") or node.get_meta("opaque_interactable", false):
 		return
 		
@@ -236,6 +241,14 @@ func _collect_mesh_instances(node: Node, out_meshes: Array[MeshInstance3D]) -> v
 			
 	for child: Node in node.get_children():
 		_collect_mesh_instances(child, out_meshes)
+
+func _find_parent_train_car(node: Node) -> Node:
+	var cur: Node = node
+	while cur:
+		if cur is TrainCar or cur.has_method("breach_doors"):
+			return cur
+		cur = cur.get_parent()
+	return null
 
 func _get_or_create_standard_material(mi: MeshInstance3D) -> StandardMaterial3D:
 	var mat: Material = mi.material_override

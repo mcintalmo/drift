@@ -3,6 +3,7 @@ extends Node3D
 
 const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 const TrainCarClass = preload("res://scripts/entities/world/train_car.gd")
+const TrainHitchPlatformClass = preload("res://scripts/entities/world/train_hitch_platform.gd")
 
 signal train_started_moving
 signal train_escaped_into_exit_tunnel
@@ -14,6 +15,7 @@ signal car_decoupled(car_index: int)
 @export var car_spacing_m: float = 10.0
 @export var bogie_wheelbase_m: float = 6.4
 @export var train_cars: Array[TrainCar] = []
+@export var hitch_platforms: Array[TrainCar] = []
 
 var curve_3d: Curve3D
 var total_track_length_m: float = 0.0
@@ -27,7 +29,7 @@ func _ready() -> void:
 	delay_timer = start_delay_seconds
 	_link_cars()
 
-func initialize_train_on_path(path_curve: Curve3D, cars: Array[TrainCar] = []) -> void:
+func initialize_train_on_path(path_curve: Curve3D, cars: Array = [], hitches: Array = []) -> void:
 	curve_3d = path_curve
 	total_track_length_m = curve_3d.get_baked_length() if curve_3d else 1000.0
 	lead_progress_m = 0.0
@@ -37,9 +39,38 @@ func initialize_train_on_path(path_curve: Curve3D, cars: Array[TrainCar] = []) -
 	delay_timer = start_delay_seconds
 	
 	if not cars.is_empty():
-		train_cars = cars
+		train_cars.clear()
+		for c in cars:
+			if c is TrainCar:
+				train_cars.append(c as TrainCar)
+	if not hitches.is_empty():
+		hitch_platforms.clear()
+		for h in hitches:
+			if h is TrainCar:
+				hitch_platforms.append(h as TrainCar)
+	else:
+		_auto_spawn_hitch_platforms_if_needed()
+		
 	_link_cars()
 	_update_car_positions(0.0)
+
+func _auto_spawn_hitch_platforms_if_needed() -> void:
+	if not hitch_platforms.is_empty() or train_cars.size() < 2:
+		return
+		
+	var hitch_scene: PackedScene = load("res://scenes/entities/train/CircularHitchPlatform.tscn")
+	if not hitch_scene:
+		return
+		
+	for i: int in range(train_cars.size()):
+		var hitch: TrainCar = hitch_scene.instantiate() as TrainCar
+		hitch.name = "HitchPlatform_%d" % i
+		hitch.car_index = i
+		hitch.set("lead_car", train_cars[i])
+		if i + 1 < train_cars.size():
+			hitch.set("trailing_car", train_cars[i + 1])
+		add_child(hitch)
+		hitch_platforms.append(hitch)
 
 func _link_cars() -> void:
 	for i: int in range(train_cars.size()):
@@ -52,6 +83,12 @@ func _link_cars() -> void:
 					trailing.append(train_cars[j])
 			car.trailing_cars = trailing
 			car.decoupled.connect(func(c_idx: int) -> void:
+				car_decoupled.emit(c_idx)
+			)
+			
+	for hitch: TrainCar in hitch_platforms:
+		if is_instance_valid(hitch):
+			hitch.decoupled.connect(func(c_idx: int) -> void:
 				car_decoupled.emit(c_idx)
 			)
 
@@ -78,7 +115,7 @@ func _physics_process(delta: float) -> void:
 	_update_car_positions(delta)
 	
 	# 4. Exit Tunnel Escape Check
-	if lead_progress_m >= total_track_length_m + (float(train_cars.size()) * car_spacing_m):
+	if lead_progress_m >= total_track_length_m + (float(train_cars.size() + 1) * car_spacing_m):
 		has_escaped = true
 		train_escaped_into_exit_tunnel.emit()
 
@@ -112,6 +149,7 @@ func _update_car_positions(_delta: float) -> void:
 
 	var half_wheelbase: float = bogie_wheelbase_m * 0.5
 
+	# 1. Update Main Train Cars
 	for i: int in range(train_cars.size()):
 		var car: TrainCar = train_cars[i]
 		if not is_instance_valid(car):
@@ -145,6 +183,36 @@ func _update_car_positions(_delta: float) -> void:
 		car.process_mode = Node.PROCESS_MODE_INHERIT if is_car_active else Node.PROCESS_MODE_DISABLED
 		
 		car.set_platform_transform(center_pos, Vector3(pitch_x, rot_y, 0.0), _delta)
+
+	# 2. Update Independent Circular Hitch Platforms (Centered directly on track curve midpoint)
+	for i: int in range(hitch_platforms.size()):
+		var hitch: TrainCar = hitch_platforms[i]
+		if not is_instance_valid(hitch):
+			continue
+			
+		var target_s: float = 0.0
+		if hitch.is_coupled:
+			target_s = lead_progress_m - (float(i) * car_spacing_m) - (car_spacing_m * 0.5)
+			hitch.distance_along_track = target_s
+			hitch.set_train_speed(current_speed_ms)
+		else:
+			target_s = hitch.distance_along_track
+			
+		var hitch_pos: Vector3 = _sample_track_point(target_s)
+		var next_pt: Vector3 = _sample_track_point(target_s + 0.6)
+		var prev_pt: Vector3 = _sample_track_point(target_s - 0.6)
+		var hitch_dir: Vector3 = (next_pt - prev_pt).normalized()
+		if hitch_dir.length_squared() < 0.01:
+			hitch_dir = Vector3.FORWARD
+			
+		var rot_y: float = atan2(-hitch_dir.x, -hitch_dir.z)
+		var pitch_x: float = asin(clampf(hitch_dir.y, -0.9, 0.9))
+		
+		var is_hitch_active: bool = (target_s >= -3.5) and (target_s <= total_track_length_m + 3.5)
+		hitch.visible = is_hitch_active
+		hitch.process_mode = Node.PROCESS_MODE_INHERIT if is_hitch_active else Node.PROCESS_MODE_DISABLED
+		
+		hitch.set_platform_transform(hitch_pos, Vector3(pitch_x, rot_y, 0.0), _delta)
 
 ## Returns estimated time remaining in seconds until the train enters the exit tunnel
 func get_time_until_extraction_seconds() -> float:

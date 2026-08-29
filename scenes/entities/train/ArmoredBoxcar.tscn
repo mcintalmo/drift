@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3 uid="uid://c8m2p9wlap17v"]
+[gd_scene load_steps=15 format=3 uid="uid://c8m2p9wlap17v"]
 
 [ext_resource type="Script" path="res://scripts/entities/world/train_car.gd" id="1_train_car"]
 [ext_resource type="Script" path="res://scripts/components/health_component.gd" id="2_health"]
@@ -7,10 +7,7 @@
 [ext_resource type="PackedScene" path="res://scenes/containers/GroundCrate.tscn" id="5_crate"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_body"]
-size = Vector3(3.2, 3.2, 7.2)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_hitch_platform"]
-size = Vector3(2.6, 0.25, 1.5)
+size = Vector3(3.2, 3.2, 8.4)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rust"]
 albedo_color = Color(0.48, 0.26, 0.18, 1)
@@ -19,25 +16,7 @@ roughness = 0.7
 
 [sub_resource type="BoxMesh" id="BoxMesh_body"]
 material = SubResource("StandardMaterial3D_rust")
-size = Vector3(3.0, 3.0, 7.2)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_grate"]
-albedo_color = Color(0.2, 0.23, 0.26, 1)
-metallic = 0.85
-roughness = 0.35
-
-[sub_resource type="BoxMesh" id="BoxMesh_platform_grate"]
-material = SubResource("StandardMaterial3D_grate")
-size = Vector3(2.6, 0.15, 1.4)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_railing"]
-albedo_color = Color(0.85, 0.65, 0.15, 1)
-metallic = 0.8
-roughness = 0.4
-
-[sub_resource type="BoxMesh" id="BoxMesh_railing"]
-material = SubResource("StandardMaterial3D_railing")
-size = Vector3(0.08, 0.85, 1.4)
+size = Vector3(3.0, 3.0, 8.4)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_door"]
 albedo_color = Color(0.32, 0.35, 0.38, 1)
@@ -61,19 +40,6 @@ size = Vector3(0.35, 0.35, 0.35)
 [sub_resource type="BoxShape3D" id="BoxShape3D_lock_hurtbox"]
 size = Vector3(0.6, 0.6, 0.6)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_coupler"]
-albedo_color = Color(0.9, 0.4, 0.1, 1)
-emission_enabled = true
-emission = Color(1, 0.45, 0.05, 1)
-emission_energy_multiplier = 4.0
-
-[sub_resource type="BoxMesh" id="BoxMesh_coupler"]
-material = SubResource("StandardMaterial3D_coupler")
-size = Vector3(0.7, 0.5, 0.8)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_coupler_col"]
-size = Vector3(1.2, 1.0, 1.2)
-
 [node name="ArmoredBoxcar" type="AnimatableBody3D" groups=["train_convoy"]]
 collision_layer = 1
 collision_mask = 7
@@ -86,43 +52,11 @@ car_height_m = 3.6
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.0, 0)
 shape = SubResource("BoxShape3D_body")
 
-[node name="FrontHitchCollision" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, -4.2)
-shape = SubResource("BoxShape3D_hitch_platform")
-
-[node name="RearHitchCollision" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 4.2)
-shape = SubResource("BoxShape3D_hitch_platform")
-
 [node name="VisualModel" type="Node3D" parent="."]
 
 [node name="BodyMesh" type="MeshInstance3D" parent="VisualModel"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.9, 0)
 mesh = SubResource("BoxMesh_body")
-
-[node name="FrontHitchPlatformMesh" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, -4.2)
-mesh = SubResource("BoxMesh_platform_grate")
-
-[node name="FrontRailingLeft" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.25, 1.2, -4.2)
-mesh = SubResource("BoxMesh_railing")
-
-[node name="FrontRailingRight" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.25, 1.2, -4.2)
-mesh = SubResource("BoxMesh_railing")
-
-[node name="RearHitchPlatformMesh" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 4.2)
-mesh = SubResource("BoxMesh_platform_grate")
-
-[node name="RearRailingLeft" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.25, 1.2, 4.2)
-mesh = SubResource("BoxMesh_railing")
-
-[node name="RearRailingRight" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.25, 1.2, 4.2)
-mesh = SubResource("BoxMesh_railing")
 
 [node name="LeftSlidingDoor" type="MeshInstance3D" parent="VisualModel"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.55, 1.7, 0)
@@ -135,10 +69,6 @@ mesh = SubResource("BoxMesh_door")
 [node name="MagneticLock" type="MeshInstance3D" parent="VisualModel"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.65, 1.7, 0)
 mesh = SubResource("BoxMesh_lock")
-
-[node name="CouplerVisual" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 4.3)
-mesh = SubResource("BoxMesh_coupler")
 
 [node name="DoorHealthComponent" type="Node" parent="."]
 script = ExtResource("2_health")
@@ -155,32 +85,11 @@ is_breach_target = true
 [node name="CollisionShape3D" type="CollisionShape3D" parent="DoorHurtbox"]
 shape = SubResource("BoxShape3D_lock_hurtbox")
 
-[node name="CouplerHealthComponent" type="Node" parent="."]
-script = ExtResource("2_health")
-max_health = 80.0
-
-[node name="CouplerHurtbox" type="Area3D" parent="." node_paths=PackedStringArray("health_component")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 4.3)
-collision_layer = 16
-collision_mask = 8
-script = ExtResource("3_hurtbox")
-health_component = NodePath("../CouplerHealthComponent")
-is_breach_target = true
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="CouplerHurtbox"]
-shape = SubResource("BoxShape3D_coupler_col")
-
 [node name="RoofGrappleAnchor" type="Node3D" parent="." groups=["grapple_anchors"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.6, 0)
 script = ExtResource("4_anchor")
 anchor_type = 2
 is_roof_boarding_anchor = true
-
-[node name="CouplerGrappleAnchor" type="Node3D" parent="." groups=["grapple_anchors"]]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 4.3)
-script = ExtResource("4_anchor")
-anchor_type = 2
-is_roof_boarding_anchor = false
 
 [node name="VaultCrate1" parent="." instance=ExtResource("5_crate")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -1.5)

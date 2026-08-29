@@ -4,6 +4,7 @@ extends Node3D
 const HexWorldTileClass = preload("res://scripts/world/hex_world_tile.gd")
 const SectorBiomeDataClass = preload("res://scripts/resources/sector_biome_data.gd")
 const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
+const TrainHitchPlatformClass = preload("res://scripts/entities/world/train_hitch_platform.gd")
 
 signal tile_spawned(coord: Vector2i, tile: Node3D)
 signal tile_despawned(coord: Vector2i)
@@ -864,8 +865,10 @@ func _spawn_moving_train_convoy() -> void:
 	# Load train scenes
 	var loco_scene: PackedScene = load("res://scenes/entities/train/ArmoredLocomotive.tscn")
 	var boxcar_scene: PackedScene = load("res://scenes/entities/train/ArmoredBoxcar.tscn")
+	var hitch_scene: PackedScene = load("res://scenes/entities/train/CircularHitchPlatform.tscn")
 	
-	var cars: Array[TrainCar] = []
+	var cars: Array = []
+	var hitches: Array = []
 	if loco_scene:
 		var loco: TrainCar = loco_scene.instantiate() as TrainCar
 		loco.name = "ArmoredLocomotive"
@@ -882,8 +885,19 @@ func _spawn_moving_train_convoy() -> void:
 		train_node.add_child(car2)
 		cars.append(car2)
 		
+	if hitch_scene:
+		for i: int in range(cars.size()):
+			var hitch: TrainCar = hitch_scene.instantiate() as TrainCar
+			hitch.name = "HitchPlatform_%d" % i
+			hitch.car_index = i
+			hitch.set("lead_car", cars[i])
+			if i + 1 < cars.size():
+				hitch.set("trailing_car", cars[i + 1])
+			train_node.add_child(hitch)
+			hitches.append(hitch)
+		
 	add_child(train_node)
-	train_node.initialize_train_on_path(curve, cars)
+	train_node.initialize_train_on_path(curve, cars, hitches)
 	_moving_train_instance = train_node
 
 ## Computes the boundary hex coordinate for the railroad entrance (in cliff face behind Drop-Off)

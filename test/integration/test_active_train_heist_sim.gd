@@ -70,7 +70,8 @@ func _init() -> void:
 	
 	print("[5/7] Testing Sled Winch Towing to Moving Boxcar Coupler Anchor...")
 	var boxcar1: TrainCar = train.train_cars[1] as TrainCar
-	var coupler_anchor: GrappleAnchorComponent = boxcar1.get_node_or_null("CouplerGrappleAnchor") as GrappleAnchorComponent
+	var hitch1: TrainCar = train.hitch_platforms[1] if train.hitch_platforms.size() > 1 else null
+	var coupler_anchor: GrappleAnchorComponent = hitch1.get_node_or_null("CouplerGrappleAnchor") as GrappleAnchorComponent if hitch1 else null
 	var sled_winch = sled.get_node_or_null("SledWinchComponent")
 	
 	if coupler_anchor and sled_winch:

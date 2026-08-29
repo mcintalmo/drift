@@ -364,6 +364,7 @@ func _setup_hot_spring_basin() -> void:
 	
 	# Steaming Turquoise Water Surface Plane
 	var water_mesh: MeshInstance3D = MeshInstance3D.new()
+	water_mesh.name = "WaterSurface"
 	var cyl: CylinderMesh = CylinderMesh.new()
 	cyl.top_radius = tile_outer_radius_m * 0.70
 	cyl.bottom_radius = tile_outer_radius_m * 0.70
@@ -372,7 +373,8 @@ func _setup_hot_spring_basin() -> void:
 	water_mesh.position.y = water_y
 	
 	var water_mat: StandardMaterial3D = StandardMaterial3D.new()
-	water_mat.albedo_color = Color(0.10, 0.85, 0.80, 0.90)
+	water_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	water_mat.albedo_color = Color(0.10, 0.85, 0.80, 0.85)
 	water_mat.roughness = 0.08
 	water_mat.metallic = 0.15
 	water_mesh.material_override = water_mat

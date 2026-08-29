@@ -222,6 +222,17 @@ func _collect_mesh_instances(node: Node, out_meshes: Array[MeshInstance3D]) -> v
 	if not node:
 		return
 		
+	# If collider is a sub-body of a HexWorldTile (e.g. TileBody), collect from the root tile so terrain + water basin fade together
+	var root_target: Node = node
+	if root_target.get_parent() is HexWorldTile:
+		root_target = root_target.get_parent()
+		
+	_collect_mesh_instances_recursive(root_target, out_meshes)
+
+func _collect_mesh_instances_recursive(node: Node, out_meshes: Array[MeshInstance3D]) -> void:
+	if not node:
+		return
+		
 	# 1. Exclude crates: loot crates must always remain 100% opaque
 	if node is GroundCrate or node.is_in_group(&"loot_crates") or node.name.begins_with("VaultCrate") or node.name.begins_with("GroundCrate"):
 		return
@@ -240,7 +251,7 @@ func _collect_mesh_instances(node: Node, out_meshes: Array[MeshInstance3D]) -> v
 			out_meshes.append(node as MeshInstance3D)
 			
 	for child: Node in node.get_children():
-		_collect_mesh_instances(child, out_meshes)
+		_collect_mesh_instances_recursive(child, out_meshes)
 
 func _find_parent_train_car(node: Node) -> Node:
 	var cur: Node = node

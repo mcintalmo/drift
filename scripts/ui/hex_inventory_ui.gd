@@ -162,10 +162,16 @@ func open_contextual_inventory() -> void:
 	if not discovered_crates.is_empty():
 		left_container_type = ContainerType.GROUND_CRATE
 		selected_left_crate_idx = 0
-		right_container_type = ContainerType.SLED_CARGO_POD if sled_inventory else ContainerType.PILOT_BACKPACK
+		if sled_inventory:
+			right_container_type = ContainerType.SLED_CARGO_POD
+		else:
+			right_container_type = ContainerType.PILOT_BACKPACK
 	else:
 		left_container_type = ContainerType.PILOT_BACKPACK
-		right_container_type = ContainerType.SLED_CARGO_POD if sled_inventory else ContainerType.PILOT_BACKPACK
+		if sled_inventory:
+			right_container_type = ContainerType.SLED_CARGO_POD
+		else:
+			right_container_type = ContainerType.PILOT_BACKPACK
 	
 	_refresh_container_panels()
 	active_focus_panel = 0
@@ -240,24 +246,34 @@ func _discover_scene_inventories() -> void:
 				sled_inventory = sled_com_component.get_node_or_null("CargoPodInventory") as HexInventoryComponent
 
 func _set_left_container(type: ContainerType, crate_idx: int = -1) -> void:
+	if type == ContainerType.SLED_CARGO_POD and sled_inventory == null:
+		return
 	left_container_type = type
 	if crate_idx >= 0:
 		selected_left_crate_idx = crate_idx
 		
 	if right_container_type == left_container_type and (type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx):
-		for alt: int in [ContainerType.SLED_CARGO_POD, ContainerType.PILOT_BACKPACK, ContainerType.GROUND_CRATE]:
+		var options: Array[int] = [ContainerType.PILOT_BACKPACK, ContainerType.GROUND_CRATE]
+		if sled_inventory != null:
+			options.append(ContainerType.SLED_CARGO_POD)
+		for alt: int in options:
 			if alt != int(left_container_type):
 				right_container_type = alt as ContainerType
 				break
 	_refresh_container_panels()
 
 func _set_right_container(type: ContainerType, crate_idx: int = -1) -> void:
+	if type == ContainerType.SLED_CARGO_POD and sled_inventory == null:
+		return
 	right_container_type = type
 	if crate_idx >= 0:
 		selected_right_crate_idx = crate_idx
 		
 	if left_container_type == right_container_type and (type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx):
-		for alt: int in [ContainerType.GROUND_CRATE, ContainerType.PILOT_BACKPACK, ContainerType.SLED_CARGO_POD]:
+		var options: Array[int] = [ContainerType.GROUND_CRATE, ContainerType.PILOT_BACKPACK]
+		if sled_inventory != null:
+			options.append(ContainerType.SLED_CARGO_POD)
+		for alt: int in options:
 			if alt != int(right_container_type):
 				left_container_type = alt as ContainerType
 				break
@@ -335,20 +351,20 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 		bp_btn.pressed.connect(func() -> void: _set_right_container(ContainerType.PILOT_BACKPACK))
 	tab_bar.add_child(bp_btn)
 	
-	# 3. Add Sled Tab
-	var sled_btn: Button = Button.new()
-	sled_btn.name = "SledTab"
-	sled_btn.custom_minimum_size = Vector2(0, 26)
-	sled_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sled_btn.text = "Sled"
-	var sled_active: bool = (active_type == ContainerType.SLED_CARGO_POD)
-	sled_btn.disabled = (sled_inventory == null)
-	sled_btn.add_theme_stylebox_override(&"normal", active_tab_style if sled_active else inactive_tab_style)
-	if is_left:
-		sled_btn.pressed.connect(func() -> void: _set_left_container(ContainerType.SLED_CARGO_POD))
-	else:
-		sled_btn.pressed.connect(func() -> void: _set_right_container(ContainerType.SLED_CARGO_POD))
-	tab_bar.add_child(sled_btn)
+	# 3. Add Sled Tab ONLY if sled is within interaction range (sled_inventory != null)
+	if sled_inventory != null:
+		var sled_btn: Button = Button.new()
+		sled_btn.name = "SledTab"
+		sled_btn.custom_minimum_size = Vector2(0, 26)
+		sled_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sled_btn.text = "Sled"
+		var sled_active: bool = (active_type == ContainerType.SLED_CARGO_POD)
+		sled_btn.add_theme_stylebox_override(&"normal", active_tab_style if sled_active else inactive_tab_style)
+		if is_left:
+			sled_btn.pressed.connect(func() -> void: _set_left_container(ContainerType.SLED_CARGO_POD))
+		else:
+			sled_btn.pressed.connect(func() -> void: _set_right_container(ContainerType.SLED_CARGO_POD))
+		tab_bar.add_child(sled_btn)
 
 func _format_crate_tab_name(crate: GroundCrate, idx: int) -> String:
 	if crate.name.begins_with("VaultCrate"):

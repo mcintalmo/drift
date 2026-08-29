@@ -198,26 +198,35 @@ func process_grapple(delta: float, pilot_global_pos: Vector3) -> Vector3:
 			var fwd: Vector3 = -target_node.global_transform.basis.z.normalized()
 			host_velocity = fwd * float(target_node.get("forward_speed_ms"))
 	
-	# Arrival / Boarding Threshold (within 2.0m of target anchor or roof)
-	if dist <= 2.0:
-		var is_roof_boarding: bool = false
-		var is_sled_target: bool = false
-		if target_anchor:
-			if target_anchor.is_roof_boarding_anchor:
+	var is_sled_target: bool = false
+	if target_anchor and is_instance_valid(target_anchor):
+		if target_anchor.anchor_type == GrappleAnchorClass.AnchorType.DYNAMIC_VEHICLE or (target_anchor.get_parent() and target_anchor.get_parent().is_in_group(&"player_sled")):
+			is_sled_target = true
+	elif target_node and is_instance_valid(target_node):
+		if target_node.is_in_group(&"player_sled") or (target_node.get_parent() and target_node.get_parent().is_in_group(&"player_sled")):
+			is_sled_target = true
+
+	# For sled: stay grappled and towed smoothly alongside until disengaged or boarded
+	if is_sled_target:
+		if dist <= 2.2:
+			var dir_tether: Vector3 = to_target.normalized()
+			# Pull alongside sled with host velocity + centering offset
+			var tether_offset: Vector3 = dir_tether * maxf(0.0, dist - 1.2) * 8.0
+			return host_velocity + tether_offset
+	else:
+		# Arrival / Boarding Threshold for non-sled targets (e.g. train car roofs, static structures)
+		if dist <= 2.0:
+			var is_roof_boarding: bool = false
+			if target_anchor and target_anchor.is_roof_boarding_anchor:
 				is_roof_boarding = true
-			elif target_anchor.anchor_type == GrappleAnchorClass.AnchorType.DYNAMIC_VEHICLE or (target_anchor.get_parent() and target_anchor.get_parent().is_in_group(&"player_sled")):
-				is_sled_target = true
-		elif target_node and (target_node is AnimatableBody3D or target_node.is_in_group(&"train_convoy")):
-			is_roof_boarding = true
-			
-		release_grapple()
-		if is_roof_boarding:
-			# Land softly on the moving roof (local velocity zero, ready for delta carry)
-			return Vector3(0, -1.0, 0)
-		elif is_sled_target:
-			# Match sled velocity upon landing next to chassis
-			return host_velocity + Vector3(0, 1.0, 0)
-		return host_velocity + Vector3(0, 1.2, 0)
+			elif target_node and (target_node is AnimatableBody3D or target_node.is_in_group(&"train_convoy")):
+				is_roof_boarding = true
+				
+			release_grapple()
+			if is_roof_boarding:
+				# Land softly on the moving roof (local velocity zero, ready for delta carry)
+				return Vector3(0, -1.0, 0)
+			return host_velocity + Vector3(0, 1.2, 0)
 	
 	if dist > (max_range_meters * 1.6):
 		release_grapple()

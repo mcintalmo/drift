@@ -4,6 +4,7 @@ extends CanvasLayer
 const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
 
 enum ContainerType {
+	NONE = -1,
 	GROUND_CRATE = 0,
 	PILOT_BACKPACK = 1,
 	SLED_CARGO_POD = 2
@@ -50,10 +51,13 @@ var inactive_tab_style: StyleBoxFlat
 @onready var floating_cursor_ghost: Control = $RootControl/FloatingCursorGhost
 
 func _ready() -> void:
-	root_control.visible = is_open
+	if root_control:
+		root_control.visible = is_open
 	_init_tab_styles()
-	_setup_grid_listeners(left_grid_control)
-	_setup_grid_listeners(right_grid_control)
+	if left_grid_control:
+		_setup_grid_listeners(left_grid_control)
+	if right_grid_control:
+		_setup_grid_listeners(right_grid_control)
 	if floating_cursor_ghost:
 		floating_cursor_ghost.draw.connect(_on_draw_floating_ghost)
 
@@ -72,7 +76,7 @@ func _init_tab_styles() -> void:
 	inactive_tab_style.set_corner_radius_all(4)
 
 func _process(_delta: float) -> void:
-	if is_open and held_item and floating_cursor_ghost:
+	if is_open and held_item and floating_cursor_ghost and root_control:
 		floating_cursor_ghost.position = root_control.get_local_mouse_position()
 		floating_cursor_ghost.queue_redraw()
 
@@ -85,12 +89,15 @@ func _on_draw_floating_ghost() -> void:
 	var radius: float = left_grid_control.cell_radius if left_grid_control else 24.0
 	
 	for offset_pt: Vector2i in rotated_pts:
-		var center: Vector2 = left_grid_control.hex_to_pixel(offset_pt)
-		var poly: PackedVector2Array = left_grid_control.get_hex_polygon(center, radius * 0.85)
-		floating_cursor_ghost.draw_colored_polygon(poly, color)
-		floating_cursor_ghost.draw_polyline(poly, Color(1, 1, 1, 0.8), 1.5, true)
+		var center: Vector2 = left_grid_control.hex_to_pixel(offset_pt) if left_grid_control else Vector2(offset_pt.x * 24.0, offset_pt.y * 24.0)
+		var poly: PackedVector2Array = left_grid_control.get_hex_polygon(center, radius * 0.85) if left_grid_control else PackedVector2Array()
+		if not poly.is_empty():
+			floating_cursor_ghost.draw_colored_polygon(poly, color)
+			floating_cursor_ghost.draw_polyline(poly, Color(1, 1, 1, 0.8), 1.5, true)
 
 func _setup_grid_listeners(grid: HexGridControl) -> void:
+	if not grid:
+		return
 	grid.cell_clicked.connect(func(cell: Vector2i, button: int, is_shift: bool) -> void:
 		_on_grid_cell_clicked(grid, cell, button, is_shift)
 	)
@@ -149,7 +156,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_rotate_held_item()
 		
 		elif event.is_action_pressed(&"pilot_lean_left") or (event is InputEventKey and event.pressed and event.physical_keycode == KEY_TAB):
-			active_focus_panel = 1 - active_focus_panel
+			if right_container_type != ContainerType.NONE:
+				active_focus_panel = 1 - active_focus_panel
+			else:
+				active_focus_panel = 0
 			_update_panel_focus()
 			var active_grid: HexGridControl = left_grid_control if active_focus_panel == 0 else right_grid_control
 			if held_item and active_grid and active_grid.grid_inventory:
@@ -162,23 +172,34 @@ func open_contextual_inventory() -> void:
 	if not discovered_crates.is_empty():
 		left_container_type = ContainerType.GROUND_CRATE
 		selected_left_crate_idx = 0
-		if sled_inventory:
+		if discovered_crates.size() > 1:
+			# 2 or more vaults open: Left shows Vault 1, Right shows Vault 2
+			right_container_type = ContainerType.GROUND_CRATE
+			selected_right_crate_idx = 1
+		elif sled_inventory:
 			right_container_type = ContainerType.SLED_CARGO_POD
+			selected_right_crate_idx = 0
 		else:
 			right_container_type = ContainerType.PILOT_BACKPACK
+			selected_right_crate_idx = 0
 	else:
 		left_container_type = ContainerType.PILOT_BACKPACK
+		selected_left_crate_idx = 0
 		if sled_inventory:
 			right_container_type = ContainerType.SLED_CARGO_POD
+			selected_right_crate_idx = 0
 		else:
-			right_container_type = ContainerType.PILOT_BACKPACK
+			# No crates and no sled: right panel is empty (NONE)
+			right_container_type = ContainerType.NONE
+			selected_right_crate_idx = -1
 	
 	_refresh_container_panels()
 	active_focus_panel = 0
 	_update_panel_focus()
 	
 	is_open = true
-	root_control.visible = true
+	if root_control:
+		root_control.visible = true
 
 func close_inventory() -> void:
 	if held_item:
@@ -197,13 +218,19 @@ func close_inventory() -> void:
 		sled_com_component.recalculate_com()
 	
 	is_open = false
-	root_control.visible = false
-	left_grid_control.clear_custom_drag_preview()
-	right_grid_control.clear_custom_drag_preview()
+	if root_control:
+		root_control.visible = false
+	if left_grid_control:
+		left_grid_control.clear_custom_drag_preview()
+	if right_grid_control:
+		right_grid_control.clear_custom_drag_preview()
 	if floating_cursor_ghost:
 		floating_cursor_ghost.queue_redraw()
 
 func _discover_scene_inventories() -> void:
+	if not is_inside_tree() or get_tree() == null:
+		return
+		
 	var pilot_nodes: Array[Node] = get_tree().get_nodes_in_group(&"player_pilot")
 	var pilot: Pilot = pilot_nodes[0] as Pilot if not pilot_nodes.is_empty() else null
 	
@@ -215,15 +242,20 @@ func _discover_scene_inventories() -> void:
 	if pilot:
 		backpack_inventory = pilot.get_node_or_null("BackpackInventoryComponent") as HexInventoryComponent
 		
-		var all_crates: Array[Node] = get_tree().root.find_children("*Crate*", "GroundCrate", true, false)
-		for c: Node in all_crates:
+		# Find all crates in the scene tree reliably via group and node tree search
+		var crate_candidates: Array[Node] = get_tree().get_nodes_in_group(&"loot_crates")
+		if crate_candidates.is_empty():
+			crate_candidates = get_tree().root.find_children("*", "", true, false)
+			
+		for c: Node in crate_candidates:
 			if c is GroundCrate and is_instance_valid(c):
 				var crate: GroundCrate = c as GroundCrate
 				# Only include UNLOOTED (unlocked) crates in the inventory tabs
 				if crate.crate_state != GroundCrate.CrateState.UNLOOTED:
 					continue
-				if crate.global_position.distance_to(pilot.global_position) <= 4.5:
-					discovered_crates.append(crate)
+				if crate.global_position.distance_to(pilot.global_position) <= 8.0:
+					if not discovered_crates.has(crate):
+						discovered_crates.append(crate)
 					
 		# Sort discovered crates by name for consistent UI tab ordering
 		discovered_crates.sort_custom(func(a: GroundCrate, b: GroundCrate) -> bool:
@@ -245,131 +277,86 @@ func _discover_scene_inventories() -> void:
 			if sled_com_component:
 				sled_inventory = sled_com_component.get_node_or_null("CargoPodInventory") as HexInventoryComponent
 
+func _are_containers_same(type_a: ContainerType, idx_a: int, type_b: ContainerType, idx_b: int) -> bool:
+	if type_a == ContainerType.NONE or type_b == ContainerType.NONE:
+		return false
+	if type_a != type_b:
+		return false
+	if type_a == ContainerType.GROUND_CRATE:
+		return idx_a == idx_b
+	return true
+
 func _set_left_container(type: ContainerType, crate_idx: int = -1) -> void:
 	if type == ContainerType.SLED_CARGO_POD and sled_inventory == null:
 		return
+	if type == ContainerType.PILOT_BACKPACK and backpack_inventory == null:
+		return
 		
-	var prev_left_type: ContainerType = left_container_type
-	var prev_left_crate_idx: int = selected_left_crate_idx
+	var target_crate_idx: int = crate_idx if crate_idx >= 0 else selected_left_crate_idx
 	
-	left_container_type = type
-	if crate_idx >= 0:
-		selected_left_crate_idx = crate_idx
+	# If already active on left: nothing to change
+	if _are_containers_same(left_container_type, selected_left_crate_idx, type, target_crate_idx):
+		return
 		
-	# Check if the right panel was displaying this exact container -> swap!
-	var is_same_on_right: bool = (right_container_type == left_container_type) and (
-		left_container_type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx
-	)
-	
-	if is_same_on_right:
-		right_container_type = prev_left_type
-		selected_right_crate_idx = prev_left_crate_idx
+	# If currently displayed on right: SWAP!
+	if _are_containers_same(right_container_type, selected_right_crate_idx, type, target_crate_idx):
+		var old_left_type: ContainerType = left_container_type
+		var old_left_idx: int = selected_left_crate_idx
 		
-		# If after swapping they are still identical, resolve conflict on right panel
-		if (right_container_type == left_container_type) and (
-			left_container_type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx
-		):
-			_resolve_right_container_conflict()
+		left_container_type = right_container_type
+		selected_left_crate_idx = selected_right_crate_idx
+		
+		right_container_type = old_left_type
+		selected_right_crate_idx = old_left_idx
+	else:
+		left_container_type = type
+		if crate_idx >= 0:
+			selected_left_crate_idx = crate_idx
 			
 	_refresh_container_panels()
 
 func _set_right_container(type: ContainerType, crate_idx: int = -1) -> void:
 	if type == ContainerType.SLED_CARGO_POD and sled_inventory == null:
 		return
+	if type == ContainerType.PILOT_BACKPACK and backpack_inventory == null:
+		return
 		
-	var prev_right_type: ContainerType = right_container_type
-	var prev_right_crate_idx: int = selected_right_crate_idx
+	var target_crate_idx: int = crate_idx if crate_idx >= 0 else selected_right_crate_idx
 	
-	right_container_type = type
-	if crate_idx >= 0:
-		selected_right_crate_idx = crate_idx
+	# If already active on right: nothing to change
+	if _are_containers_same(right_container_type, selected_right_crate_idx, type, target_crate_idx):
+		return
 		
-	# Check if the left panel was displaying this exact container -> swap!
-	var is_same_on_left: bool = (left_container_type == right_container_type) and (
-		right_container_type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx
-	)
-	
-	if is_same_on_left:
-		left_container_type = prev_right_type
-		selected_left_crate_idx = prev_right_crate_idx
+	# If currently displayed on left: SWAP!
+	if _are_containers_same(left_container_type, selected_left_crate_idx, type, target_crate_idx):
+		var old_right_type: ContainerType = right_container_type
+		var old_right_idx: int = selected_right_crate_idx
 		
-		# If after swapping they are still identical, resolve conflict on left panel
-		if (left_container_type == right_container_type) and (
-			right_container_type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx
-		):
-			_resolve_left_container_conflict()
+		right_container_type = left_container_type
+		selected_right_crate_idx = selected_left_crate_idx
+		
+		left_container_type = old_right_type
+		selected_left_crate_idx = old_right_idx
+	else:
+		right_container_type = type
+		if crate_idx >= 0:
+			selected_right_crate_idx = crate_idx
 			
 	_refresh_container_panels()
-
-func _resolve_right_container_conflict() -> void:
-	if left_container_type == ContainerType.GROUND_CRATE:
-		for i: int in range(discovered_crates.size()):
-			if i != selected_left_crate_idx:
-				right_container_type = ContainerType.GROUND_CRATE
-				selected_right_crate_idx = i
-				return
-		if backpack_inventory != null:
-			right_container_type = ContainerType.PILOT_BACKPACK
-			return
-		if sled_inventory != null:
-			right_container_type = ContainerType.SLED_CARGO_POD
-			return
-	elif left_container_type == ContainerType.PILOT_BACKPACK:
-		if not discovered_crates.is_empty():
-			right_container_type = ContainerType.GROUND_CRATE
-			selected_right_crate_idx = 0
-			return
-		if sled_inventory != null:
-			right_container_type = ContainerType.SLED_CARGO_POD
-			return
-	elif left_container_type == ContainerType.SLED_CARGO_POD:
-		if not discovered_crates.is_empty():
-			right_container_type = ContainerType.GROUND_CRATE
-			selected_right_crate_idx = 0
-			return
-		if backpack_inventory != null:
-			right_container_type = ContainerType.PILOT_BACKPACK
-			return
-
-func _resolve_left_container_conflict() -> void:
-	if right_container_type == ContainerType.GROUND_CRATE:
-		for i: int in range(discovered_crates.size()):
-			if i != selected_right_crate_idx:
-				left_container_type = ContainerType.GROUND_CRATE
-				selected_left_crate_idx = i
-				return
-		if backpack_inventory != null:
-			left_container_type = ContainerType.PILOT_BACKPACK
-			return
-		if sled_inventory != null:
-			left_container_type = ContainerType.SLED_CARGO_POD
-			return
-	elif right_container_type == ContainerType.PILOT_BACKPACK:
-		if not discovered_crates.is_empty():
-			left_container_type = ContainerType.GROUND_CRATE
-			selected_left_crate_idx = 0
-			return
-		if sled_inventory != null:
-			left_container_type = ContainerType.SLED_CARGO_POD
-			return
-	elif right_container_type == ContainerType.SLED_CARGO_POD:
-		if not discovered_crates.is_empty():
-			left_container_type = ContainerType.GROUND_CRATE
-			selected_left_crate_idx = 0
-			return
-		if backpack_inventory != null:
-			left_container_type = ContainerType.PILOT_BACKPACK
-			return
 
 func _refresh_container_panels() -> void:
 	# 1. Bind left container
 	var left_inv: HexInventoryComponent = _get_inventory_by_type(left_container_type, true)
-	left_grid_control.set_inventory(left_inv)
+	if left_grid_control:
+		left_grid_control.set_inventory(left_inv)
+		left_grid_control.visible = (left_inv != null)
 	_update_load_label(left_load_label, left_inv, left_container_type, true)
 	
 	# 2. Bind right container
 	var right_inv: HexInventoryComponent = _get_inventory_by_type(right_container_type, false)
-	right_grid_control.set_inventory(right_inv)
+	if right_grid_control:
+		right_grid_control.set_inventory(right_inv)
+		right_grid_control.visible = (right_inv != null)
 	_update_load_label(right_load_label, right_inv, right_container_type, false)
 	
 	# 3. Rebuild tab bars
@@ -384,6 +371,10 @@ func _refresh_container_panels() -> void:
 				sled_com_component.current_total_mass_kg,
 				Vector2(sled_com_component.current_com_offset_3d.x, sled_com_component.current_com_offset_3d.y)
 			)
+			com_widget.visible = true
+	else:
+		if com_widget:
+			com_widget.visible = (sled_inventory != null)
 
 func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 	if not tab_bar:
@@ -396,6 +387,10 @@ func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
 	var active_type: ContainerType = left_container_type if is_left else right_container_type
 	var selected_crate_idx: int = selected_left_crate_idx if is_left else selected_right_crate_idx
 	
+	# If this is the right panel and no secondary containers exist (no crates, no sled), don't show tabs on right
+	if not is_left and discovered_crates.is_empty() and sled_inventory == null:
+		return
+		
 	# 1. Add all discovered Crate tabs (always visible so player can switch/swap freely)
 	for i: int in range(discovered_crates.size()):
 		var crate: GroundCrate = discovered_crates[i]
@@ -458,7 +453,10 @@ func _format_crate_tab_name(crate: GroundCrate, idx: int) -> String:
 func _update_load_label(lbl: Label, inv: HexInventoryComponent, type: ContainerType, is_left: bool) -> void:
 	if not lbl:
 		return
-	if not inv:
+	if type == ContainerType.NONE or not inv:
+		if type == ContainerType.NONE:
+			lbl.text = ""
+			return
 		if type == ContainerType.GROUND_CRATE:
 			var idx: int = selected_left_crate_idx if is_left else selected_right_crate_idx
 			if idx >= 0 and idx < discovered_crates.size():
@@ -501,13 +499,19 @@ func _get_inventory_by_type(type: ContainerType, is_left: bool) -> HexInventoryC
 			return backpack_inventory
 		ContainerType.SLED_CARGO_POD:
 			return sled_inventory
+		ContainerType.NONE:
+			return null
 	return null
 
 func _update_panel_focus() -> void:
-	left_grid_control.is_active_focus = (active_focus_panel == 0)
-	right_grid_control.is_active_focus = (active_focus_panel == 1)
-	left_grid_control.queue_redraw()
-	right_grid_control.queue_redraw()
+	if right_container_type == ContainerType.NONE:
+		active_focus_panel = 0
+	if left_grid_control:
+		left_grid_control.is_active_focus = (active_focus_panel == 0)
+		left_grid_control.queue_redraw()
+	if right_grid_control:
+		right_grid_control.is_active_focus = (active_focus_panel == 1 and right_container_type != ContainerType.NONE)
+		right_grid_control.queue_redraw()
 
 func _start_dragging(item: HexItemData, source_inv: HexInventoryComponent, source_slot: Vector2i) -> void:
 	held_item = item
@@ -515,8 +519,10 @@ func _start_dragging(item: HexItemData, source_inv: HexInventoryComponent, sourc
 	source_inv_for_drag = source_inv
 	source_slot_for_drag = source_slot
 	source_inv.remove_item(item)
-	left_grid_control.queue_redraw()
-	right_grid_control.queue_redraw()
+	if left_grid_control:
+		left_grid_control.queue_redraw()
+	if right_grid_control:
+		right_grid_control.queue_redraw()
 	_refresh_container_panels()
 	_update_tooltip(held_item)
 
@@ -540,10 +546,12 @@ func _try_drop_item(grid: HexGridControl, cell: Vector2i) -> void:
 		held_item = null
 		source_inv_for_drag = null
 		grid.grid_inventory.place_item(dropped_item, cell, rot)
-		left_grid_control.clear_custom_drag_preview()
-		right_grid_control.clear_custom_drag_preview()
-		left_grid_control.queue_redraw()
-		right_grid_control.queue_redraw()
+		if left_grid_control:
+			left_grid_control.clear_custom_drag_preview()
+			left_grid_control.queue_redraw()
+		if right_grid_control:
+			right_grid_control.clear_custom_drag_preview()
+			right_grid_control.queue_redraw()
 		_refresh_container_panels()
 		if floating_cursor_ghost:
 			floating_cursor_ghost.queue_redraw()
@@ -567,8 +575,10 @@ func _quick_transfer_item(item: HexItemData, source_inv: HexInventoryComponent) 
 			if destination.can_place_item(item, slot, rot):
 				source_inv.remove_item(item)
 				destination.place_item(item, slot, rot)
-				left_grid_control.queue_redraw()
-				right_grid_control.queue_redraw()
+				if left_grid_control:
+					left_grid_control.queue_redraw()
+				if right_grid_control:
+					right_grid_control.queue_redraw()
 				_refresh_container_panels()
 				_update_tooltip(null)
 				return
@@ -578,16 +588,20 @@ func _cancel_drag() -> void:
 		source_inv_for_drag.place_item(held_item, source_slot_for_drag, held_item.rotation_step)
 	held_item = null
 	source_inv_for_drag = null
-	left_grid_control.clear_custom_drag_preview()
-	right_grid_control.clear_custom_drag_preview()
-	left_grid_control.queue_redraw()
-	right_grid_control.queue_redraw()
+	if left_grid_control:
+		left_grid_control.clear_custom_drag_preview()
+		left_grid_control.queue_redraw()
+	if right_grid_control:
+		right_grid_control.clear_custom_drag_preview()
+		right_grid_control.queue_redraw()
 	_refresh_container_panels()
 	if floating_cursor_ghost:
 		floating_cursor_ghost.queue_redraw()
 	_update_tooltip(null)
 
 func _update_tooltip(item: HexItemData) -> void:
+	if not tooltip_name or not tooltip_mass or not tooltip_desc:
+		return
 	if item:
 		tooltip_name.text = item.item_name
 		tooltip_mass.text = "Mass: %.1f kg" % item.mass_kg

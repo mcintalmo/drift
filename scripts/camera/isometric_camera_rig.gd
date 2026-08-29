@@ -219,24 +219,22 @@ func _update_terrain_occlusion(delta: float) -> void:
 		_occluded_meshes.erase(mi)
 
 func _collect_mesh_instances(node: Node, out_meshes: Array[MeshInstance3D]) -> void:
+	if not node:
+		return
 	if node is MeshInstance3D and node.name != "OcclusionShadowProxy":
 		if not out_meshes.has(node as MeshInstance3D):
 			out_meshes.append(node as MeshInstance3D)
-	else:
-		for child in node.get_children():
-			if child is MeshInstance3D and child.name != "OcclusionShadowProxy":
-				if not out_meshes.has(child as MeshInstance3D):
-					out_meshes.append(child as MeshInstance3D)
-		if node.get_parent() is Node3D:
-			for sibling in node.get_parent().get_children():
-				if sibling is MeshInstance3D and sibling.name != "OcclusionShadowProxy":
-					if not out_meshes.has(sibling as MeshInstance3D):
-						out_meshes.append(sibling as MeshInstance3D)
+			
+	for child: Node in node.get_children():
+		_collect_mesh_instances(child, out_meshes)
 
 func _get_or_create_standard_material(mi: MeshInstance3D) -> StandardMaterial3D:
 	var mat: Material = mi.material_override
 	if not mat and mi.mesh:
 		mat = mi.mesh.surface_get_material(0)
+		if mat is StandardMaterial3D:
+			mat = (mat as StandardMaterial3D).duplicate()
+			mi.material_override = mat
 	return mat as StandardMaterial3D if mat is StandardMaterial3D else null
 
 func add_trauma(amount: float) -> void:

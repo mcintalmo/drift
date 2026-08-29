@@ -123,25 +123,11 @@ func interact_loot(player: Node3D, donut: Node, on_open_inventory: Callable) -> 
 		return
 		
 	if crate_state == CrateState.UNLOOTED:
-		# In UNLOOTED state: quick channel to open inventory screen
-		if donut and donut.has_method("start_channel"):
-			loot_search_started.emit()
-			donut.start_channel(
-				"Opening Cargo Crate...",
-				0.25,
-				func() -> void:
-					loot_search_completed.emit()
-					if on_open_inventory.is_valid():
-						on_open_inventory.call(),
-				func() -> void:
-					pass,
-				self,
-				player,
-				3.8
-			)
-		else:
-			if on_open_inventory.is_valid():
-				on_open_inventory.call()
+		# In UNLOOTED state: instant access (0s donut time)
+		loot_search_started.emit()
+		loot_search_completed.emit()
+		if on_open_inventory.is_valid():
+			on_open_inventory.call()
 		return
 		
 	# In LOCKED state: 1.2s channel to unlock -> transitions to UNLOOTED

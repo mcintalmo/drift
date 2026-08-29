@@ -12,8 +12,10 @@ enum ContainerType {
 @export var is_open: bool = false
 
 # Container Components
-var crate_inventory: HexInventoryComponent = null
-var nearby_locked_crate: GroundCrate = null
+var discovered_crates: Array[GroundCrate] = []
+var selected_left_crate_idx: int = 0
+var selected_right_crate_idx: int = 0
+
 var backpack_inventory: HexInventoryComponent = null
 var sled_inventory: HexInventoryComponent = null
 var sled_com_component: CenterOfMassComponent = null
@@ -38,13 +40,8 @@ var inactive_tab_style: StyleBoxFlat
 @onready var left_load_label: Label = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/LeftLoadLabel
 @onready var right_load_label: Label = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/RightLoadLabel
 
-@onready var left_crate_tab: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/LeftTabBar/CrateTab
-@onready var left_backpack_tab: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/LeftTabBar/BackpackTab
-@onready var left_sled_tab: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/LeftTabBar/SledTab
-
-@onready var right_crate_tab: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/RightTabBar/CrateTab
-@onready var right_backpack_tab: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/RightTabBar/BackpackTab
-@onready var right_sled_tab: Button = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/RightTabBar/SledTab
+@onready var left_tab_bar: HBoxContainer = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/LeftContainer/LeftTabBar
+@onready var right_tab_bar: HBoxContainer = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/RightContainer/RightTabBar
 
 @onready var com_widget: COMVisualizerWidget = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/COMVisualizerWidget
 @onready var tooltip_name: Label = $RootControl/PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/CenterPanel/TooltipPanel/VBoxContainer/ItemNameLabel
@@ -59,22 +56,6 @@ func _ready() -> void:
 	_setup_grid_listeners(right_grid_control)
 	if floating_cursor_ghost:
 		floating_cursor_ghost.draw.connect(_on_draw_floating_ghost)
-	
-	# Left tab signals
-	if left_crate_tab:
-		left_crate_tab.pressed.connect(func() -> void: _set_left_container(ContainerType.GROUND_CRATE))
-	if left_backpack_tab:
-		left_backpack_tab.pressed.connect(func() -> void: _set_left_container(ContainerType.PILOT_BACKPACK))
-	if left_sled_tab:
-		left_sled_tab.pressed.connect(func() -> void: _set_left_container(ContainerType.SLED_CARGO_POD))
-	
-	# Right tab signals
-	if right_crate_tab:
-		right_crate_tab.pressed.connect(func() -> void: _set_right_container(ContainerType.GROUND_CRATE))
-	if right_backpack_tab:
-		right_backpack_tab.pressed.connect(func() -> void: _set_right_container(ContainerType.PILOT_BACKPACK))
-	if right_sled_tab:
-		right_sled_tab.pressed.connect(func() -> void: _set_right_container(ContainerType.SLED_CARGO_POD))
 
 func _init_tab_styles() -> void:
 	active_tab_style = StyleBoxFlat.new()
@@ -178,12 +159,13 @@ func _unhandled_input(event: InputEvent) -> void:
 func open_contextual_inventory() -> void:
 	_discover_scene_inventories()
 	
-	if crate_inventory:
+	if not discovered_crates.is_empty():
 		left_container_type = ContainerType.GROUND_CRATE
+		selected_left_crate_idx = 0
 		right_container_type = ContainerType.SLED_CARGO_POD if sled_inventory else ContainerType.PILOT_BACKPACK
 	else:
 		left_container_type = ContainerType.PILOT_BACKPACK
-		right_container_type = ContainerType.SLED_CARGO_POD
+		right_container_type = ContainerType.SLED_CARGO_POD if sled_inventory else ContainerType.PILOT_BACKPACK
 	
 	_refresh_container_panels()
 	active_focus_panel = 0
@@ -201,8 +183,9 @@ func close_inventory() -> void:
 		backpack_inventory.apply_pseudo_gravity_settling()
 	if sled_inventory:
 		sled_inventory.apply_pseudo_gravity_settling()
-	if crate_inventory:
-		crate_inventory.apply_pseudo_gravity_settling()
+	for crate: GroundCrate in discovered_crates:
+		if is_instance_valid(crate) and crate.inventory:
+			crate.inventory.apply_pseudo_gravity_settling()
 	
 	if sled_com_component and is_instance_valid(sled_com_component):
 		sled_com_component.recalculate_com()
@@ -218,8 +201,7 @@ func _discover_scene_inventories() -> void:
 	var pilot_nodes: Array[Node] = get_tree().get_nodes_in_group(&"player_pilot")
 	var pilot: Pilot = pilot_nodes[0] as Pilot if not pilot_nodes.is_empty() else null
 	
-	crate_inventory = null
-	nearby_locked_crate = null
+	discovered_crates.clear()
 	backpack_inventory = null
 	sled_inventory = null
 	sled_com_component = null
@@ -234,11 +216,16 @@ func _discover_scene_inventories() -> void:
 				if crate.crate_state == GroundCrate.CrateState.NON_INTERACTABLE:
 					continue
 				if crate.global_position.distance_to(pilot.global_position) <= 4.5:
-					if crate.crate_state == GroundCrate.CrateState.UNLOOTED:
-						crate_inventory = crate.get_node_or_null("HexInventoryComponent") as HexInventoryComponent
-						break
-					elif crate.crate_state == GroundCrate.CrateState.LOCKED:
-						nearby_locked_crate = crate
+					discovered_crates.append(crate)
+					
+		# Sort discovered crates by name for consistent UI tab ordering
+		discovered_crates.sort_custom(func(a: GroundCrate, b: GroundCrate) -> bool:
+			return a.name < b.name
+		)
+		
+		if not discovered_crates.is_empty():
+			selected_left_crate_idx = clampi(selected_left_crate_idx, 0, discovered_crates.size() - 1)
+			selected_right_crate_idx = clampi(selected_right_crate_idx, 0, discovered_crates.size() - 1)
 	
 	var sled_nodes: Array[Node] = get_tree().get_nodes_in_group(&"player_sled")
 	if not sled_nodes.is_empty() and is_instance_valid(sled_nodes[0]):
@@ -251,18 +238,24 @@ func _discover_scene_inventories() -> void:
 			if sled_com_component:
 				sled_inventory = sled_com_component.get_node_or_null("CargoPodInventory") as HexInventoryComponent
 
-func _set_left_container(type: ContainerType) -> void:
+func _set_left_container(type: ContainerType, crate_idx: int = -1) -> void:
 	left_container_type = type
-	if right_container_type == left_container_type:
+	if crate_idx >= 0:
+		selected_left_crate_idx = crate_idx
+		
+	if right_container_type == left_container_type and (type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx):
 		for alt: int in [ContainerType.SLED_CARGO_POD, ContainerType.PILOT_BACKPACK, ContainerType.GROUND_CRATE]:
 			if alt != int(left_container_type):
 				right_container_type = alt as ContainerType
 				break
 	_refresh_container_panels()
 
-func _set_right_container(type: ContainerType) -> void:
+func _set_right_container(type: ContainerType, crate_idx: int = -1) -> void:
 	right_container_type = type
-	if left_container_type == right_container_type:
+	if crate_idx >= 0:
+		selected_right_crate_idx = crate_idx
+		
+	if left_container_type == right_container_type and (type != ContainerType.GROUND_CRATE or selected_left_crate_idx == selected_right_crate_idx):
 		for alt: int in [ContainerType.GROUND_CRATE, ContainerType.PILOT_BACKPACK, ContainerType.SLED_CARGO_POD]:
 			if alt != int(right_container_type):
 				left_container_type = alt as ContainerType
@@ -271,17 +264,18 @@ func _set_right_container(type: ContainerType) -> void:
 
 func _refresh_container_panels() -> void:
 	# 1. Bind left container
-	var left_inv: HexInventoryComponent = _get_inventory_by_type(left_container_type)
+	var left_inv: HexInventoryComponent = _get_inventory_by_type(left_container_type, true)
 	left_grid_control.set_inventory(left_inv)
-	_update_load_label(left_load_label, left_inv, left_container_type)
+	_update_load_label(left_load_label, left_inv, left_container_type, true)
 	
 	# 2. Bind right container
-	var right_inv: HexInventoryComponent = _get_inventory_by_type(right_container_type)
+	var right_inv: HexInventoryComponent = _get_inventory_by_type(right_container_type, false)
 	right_grid_control.set_inventory(right_inv)
-	_update_load_label(right_load_label, right_inv, right_container_type)
+	_update_load_label(right_load_label, right_inv, right_container_type, false)
 	
-	# 3. Update tab buttons
-	_update_tab_buttons()
+	# 3. Rebuild tab bars
+	_rebuild_tab_bar(left_tab_bar, true)
+	_rebuild_tab_bar(right_tab_bar, false)
 	
 	# 4. Explicitly update Sled COM visualizer
 	if sled_com_component and is_instance_valid(sled_com_component):
@@ -292,37 +286,95 @@ func _refresh_container_panels() -> void:
 				Vector2(sled_com_component.current_com_offset_3d.x, sled_com_component.current_com_offset_3d.y)
 			)
 
-func _update_tab_buttons() -> void:
-	var crate_available: bool = (crate_inventory != null)
-	var crate_btn_text: String = "Crate" if not nearby_locked_crate else "Crate [LOCKED]"
-	
-	if left_crate_tab:
-		left_crate_tab.text = crate_btn_text
-	if right_crate_tab:
-		right_crate_tab.text = crate_btn_text
-	
-	_apply_tab_style(left_crate_tab, left_container_type == ContainerType.GROUND_CRATE, crate_available and right_container_type != ContainerType.GROUND_CRATE)
-	_apply_tab_style(left_backpack_tab, left_container_type == ContainerType.PILOT_BACKPACK, backpack_inventory != null and right_container_type != ContainerType.PILOT_BACKPACK)
-	_apply_tab_style(left_sled_tab, left_container_type == ContainerType.SLED_CARGO_POD, sled_inventory != null and right_container_type != ContainerType.SLED_CARGO_POD)
-	
-	_apply_tab_style(right_crate_tab, right_container_type == ContainerType.GROUND_CRATE, crate_available and left_container_type != ContainerType.GROUND_CRATE)
-	_apply_tab_style(right_backpack_tab, right_container_type == ContainerType.PILOT_BACKPACK, backpack_inventory != null and left_container_type != ContainerType.PILOT_BACKPACK)
-	_apply_tab_style(right_sled_tab, right_container_type == ContainerType.SLED_CARGO_POD, sled_inventory != null and left_container_type != ContainerType.SLED_CARGO_POD)
-
-func _apply_tab_style(btn: Button, is_active: bool, is_available: bool) -> void:
-	if not btn:
+func _rebuild_tab_bar(tab_bar: HBoxContainer, is_left: bool) -> void:
+	if not tab_bar:
 		return
-	btn.visible = is_available or is_active or (nearby_locked_crate != null and btn.name.begins_with("Crate"))
-	btn.disabled = not is_available and not is_active
-	btn.add_theme_stylebox_override(&"normal", active_tab_style if is_active else inactive_tab_style)
+		
+	# Clear existing tab buttons
+	for child: Node in tab_bar.get_children():
+		child.queue_free()
+		
+	var active_type: ContainerType = left_container_type if is_left else right_container_type
+	var selected_crate_idx: int = selected_left_crate_idx if is_left else selected_right_crate_idx
+	
+	# 1. Add Dynamic Crate Tabs
+	for i: int in range(discovered_crates.size()):
+		var crate: GroundCrate = discovered_crates[i]
+		if not is_instance_valid(crate):
+			continue
+			
+		var btn: Button = Button.new()
+		btn.name = "CrateTab_%d" % i
+		btn.custom_minimum_size = Vector2(0, 26)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.text = _format_crate_tab_name(crate, i)
+		
+		var is_active: bool = (active_type == ContainerType.GROUND_CRATE and selected_crate_idx == i)
+		btn.add_theme_stylebox_override(&"normal", active_tab_style if is_active else inactive_tab_style)
+		
+		var target_idx: int = i
+		if is_left:
+			btn.pressed.connect(func() -> void: _set_left_container(ContainerType.GROUND_CRATE, target_idx))
+		else:
+			btn.pressed.connect(func() -> void: _set_right_container(ContainerType.GROUND_CRATE, target_idx))
+		tab_bar.add_child(btn)
+		
+	# 2. Add Backpack Tab
+	var bp_btn: Button = Button.new()
+	bp_btn.name = "BackpackTab"
+	bp_btn.custom_minimum_size = Vector2(0, 26)
+	bp_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bp_btn.text = "Backpack"
+	var bp_active: bool = (active_type == ContainerType.PILOT_BACKPACK)
+	bp_btn.disabled = (backpack_inventory == null)
+	bp_btn.add_theme_stylebox_override(&"normal", active_tab_style if bp_active else inactive_tab_style)
+	if is_left:
+		bp_btn.pressed.connect(func() -> void: _set_left_container(ContainerType.PILOT_BACKPACK))
+	else:
+		bp_btn.pressed.connect(func() -> void: _set_right_container(ContainerType.PILOT_BACKPACK))
+	tab_bar.add_child(bp_btn)
+	
+	# 3. Add Sled Tab
+	var sled_btn: Button = Button.new()
+	sled_btn.name = "SledTab"
+	sled_btn.custom_minimum_size = Vector2(0, 26)
+	sled_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sled_btn.text = "Sled"
+	var sled_active: bool = (active_type == ContainerType.SLED_CARGO_POD)
+	sled_btn.disabled = (sled_inventory == null)
+	sled_btn.add_theme_stylebox_override(&"normal", active_tab_style if sled_active else inactive_tab_style)
+	if is_left:
+		sled_btn.pressed.connect(func() -> void: _set_left_container(ContainerType.SLED_CARGO_POD))
+	else:
+		sled_btn.pressed.connect(func() -> void: _set_right_container(ContainerType.SLED_CARGO_POD))
+	tab_bar.add_child(sled_btn)
 
-func _update_load_label(lbl: Label, inv: HexInventoryComponent, type: ContainerType) -> void:
+func _format_crate_tab_name(crate: GroundCrate, idx: int) -> String:
+	var label: String = ""
+	if crate.name.begins_with("VaultCrate"):
+		var suffix: String = crate.name.replace("VaultCrate", "")
+		label = "Vault %s" % suffix
+	else:
+		label = "Crate #%d" % (idx + 1)
+		
+	if crate.crate_state == GroundCrate.CrateState.LOCKED:
+		label += " [LOCKED]"
+	return label
+
+func _update_load_label(lbl: Label, inv: HexInventoryComponent, type: ContainerType, is_left: bool) -> void:
 	if not lbl:
 		return
 	if not inv:
-		if type == ContainerType.GROUND_CRATE and nearby_locked_crate:
-			lbl.text = "CRATE LOCKED - BREACH LOCK TO ACCESS"
-			lbl.add_theme_color_override(&"font_color", Color(1.0, 0.3, 0.3, 1.0))
+		if type == ContainerType.GROUND_CRATE:
+			var idx: int = selected_left_crate_idx if is_left else selected_right_crate_idx
+			if idx >= 0 and idx < discovered_crates.size():
+				var crate: GroundCrate = discovered_crates[idx]
+				if is_instance_valid(crate) and crate.crate_state == GroundCrate.CrateState.LOCKED:
+					lbl.text = "%s LOCKED - HOLD 'F' TO BREACH" % crate.name.to_upper()
+					lbl.add_theme_color_override(&"font_color", Color(1.0, 0.35, 0.3, 1.0))
+					return
+			lbl.text = "NO CRATE ATTACHED"
+			lbl.add_theme_color_override(&"font_color", Color(0.6, 0.6, 0.6, 0.8))
 		else:
 			lbl.text = "NO CONTAINER ATTACHED"
 			lbl.add_theme_color_override(&"font_color", Color(0.6, 0.6, 0.6, 0.8))
@@ -342,11 +394,19 @@ func _update_load_label(lbl: Label, inv: HexInventoryComponent, type: ContainerT
 			lbl.text = "Payload: %.1f kg [NOMINAL LOAD]" % mass
 			lbl.add_theme_color_override(&"font_color", Color(0.3, 0.85, 0.4, 1.0))
 
-func _get_inventory_by_type(type: ContainerType) -> HexInventoryComponent:
+func _get_inventory_by_type(type: ContainerType, is_left: bool) -> HexInventoryComponent:
 	match type:
-		ContainerType.GROUND_CRATE: return crate_inventory
-		ContainerType.PILOT_BACKPACK: return backpack_inventory
-		ContainerType.SLED_CARGO_POD: return sled_inventory
+		ContainerType.GROUND_CRATE:
+			var idx: int = selected_left_crate_idx if is_left else selected_right_crate_idx
+			if idx >= 0 and idx < discovered_crates.size():
+				var crate: GroundCrate = discovered_crates[idx]
+				if is_instance_valid(crate) and crate.crate_state == GroundCrate.CrateState.UNLOOTED:
+					return crate.get_node_or_null("HexInventoryComponent") as HexInventoryComponent
+			return null
+		ContainerType.PILOT_BACKPACK:
+			return backpack_inventory
+		ContainerType.SLED_CARGO_POD:
+			return sled_inventory
 	return null
 
 func _update_panel_focus() -> void:
@@ -397,8 +457,8 @@ func _try_drop_item(grid: HexGridControl, cell: Vector2i) -> void:
 
 func _quick_transfer_item(item: HexItemData, source_inv: HexInventoryComponent) -> void:
 	var destination: HexInventoryComponent = null
-	var left_inv: HexInventoryComponent = _get_inventory_by_type(left_container_type)
-	var right_inv: HexInventoryComponent = _get_inventory_by_type(right_container_type)
+	var left_inv: HexInventoryComponent = _get_inventory_by_type(left_container_type, true)
+	var right_inv: HexInventoryComponent = _get_inventory_by_type(right_container_type, false)
 	
 	if source_inv == left_inv:
 		destination = right_inv

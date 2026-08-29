@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3 uid="uid://c8m2p9wlap17v"]
+[gd_scene load_steps=23 format=3 uid="uid://c8m2p9wlap17v"]
 
 [ext_resource type="Script" path="res://scripts/entities/world/train_car.gd" id="1_train_car"]
 [ext_resource type="Script" path="res://scripts/components/health_component.gd" id="2_health"]
@@ -14,9 +14,6 @@ size = Vector3(4.2, 0.4, 9.8)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_end_wall"]
 size = Vector3(4.2, 3.8, 0.4)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_right_wall"]
-size = Vector3(0.3, 3.8, 9.8)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_door_flank"]
 size = Vector3(0.3, 3.8, 3.2)
@@ -43,10 +40,6 @@ size = Vector3(4.0, 0.3, 9.8)
 [sub_resource type="BoxMesh" id="BoxMesh_end_wall"]
 material = SubResource("StandardMaterial3D_hull")
 size = Vector3(4.0, 3.8, 0.3)
-
-[sub_resource type="BoxMesh" id="BoxMesh_right_wall"]
-material = SubResource("StandardMaterial3D_hull")
-size = Vector3(0.2, 3.8, 9.8)
 
 [sub_resource type="BoxMesh" id="BoxMesh_door_flank"]
 material = SubResource("StandardMaterial3D_hull")
@@ -102,10 +95,6 @@ shape = SubResource("BoxShape3D_end_wall")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 4.7)
 shape = SubResource("BoxShape3D_end_wall")
 
-[node name="RightWallCollision" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.05, 2.2, 0)
-shape = SubResource("BoxShape3D_right_wall")
-
 [node name="LeftWallFrontCollision" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.05, 2.2, -3.2)
 shape = SubResource("BoxShape3D_door_flank")
@@ -118,8 +107,24 @@ shape = SubResource("BoxShape3D_door_flank")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.05, 3.8, 0)
 shape = SubResource("BoxShape3D_lintel")
 
-[node name="DoorCollision" type="CollisionShape3D" parent="."]
+[node name="LeftDoorCollision" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.05, 2.0, 0)
+shape = SubResource("BoxShape3D_door_leaf")
+
+[node name="RightWallFrontCollision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.05, 2.2, -3.2)
+shape = SubResource("BoxShape3D_door_flank")
+
+[node name="RightWallRearCollision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.05, 2.2, 3.2)
+shape = SubResource("BoxShape3D_door_flank")
+
+[node name="RightLintelCollision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.05, 3.8, 0)
+shape = SubResource("BoxShape3D_lintel")
+
+[node name="RightDoorCollision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.05, 2.0, 0)
 shape = SubResource("BoxShape3D_door_leaf")
 
 [node name="VisualModel" type="Node3D" parent="."]
@@ -140,10 +145,6 @@ mesh = SubResource("BoxMesh_end_wall")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 4.75)
 mesh = SubResource("BoxMesh_end_wall")
 
-[node name="RightWallMesh" type="MeshInstance3D" parent="VisualModel"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.0, 2.2, 0)
-mesh = SubResource("BoxMesh_right_wall")
-
 [node name="LeftWallFrontMesh" type="MeshInstance3D" parent="VisualModel"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.0, 2.2, -3.2)
 mesh = SubResource("BoxMesh_door_flank")
@@ -160,8 +161,28 @@ mesh = SubResource("BoxMesh_lintel")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.08, 2.0, 0)
 mesh = SubResource("BoxMesh_door")
 
-[node name="MagneticLock" type="MeshInstance3D" parent="VisualModel"]
+[node name="LeftLock" type="MeshInstance3D" parent="VisualModel"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.18, 2.0, 0)
+mesh = SubResource("BoxMesh_lock")
+
+[node name="RightWallFrontMesh" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.0, 2.2, -3.2)
+mesh = SubResource("BoxMesh_door_flank")
+
+[node name="RightWallRearMesh" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.0, 2.2, 3.2)
+mesh = SubResource("BoxMesh_door_flank")
+
+[node name="RightLintelMesh" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.0, 3.8, 0)
+mesh = SubResource("BoxMesh_lintel")
+
+[node name="RightSlidingDoor" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.08, 2.0, 0)
+mesh = SubResource("BoxMesh_door")
+
+[node name="RightLock" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.18, 2.0, 0)
 mesh = SubResource("BoxMesh_lock")
 
 [node name="InteriorWorkLight" type="OmniLight3D" parent="."]
@@ -185,6 +206,17 @@ is_breach_target = true
 [node name="CollisionShape3D" type="CollisionShape3D" parent="DoorHurtbox"]
 shape = SubResource("BoxShape3D_lock_hurtbox")
 
+[node name="RightDoorHurtbox" type="Area3D" parent="." node_paths=PackedStringArray("health_component")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.15, 2.0, 0)
+collision_layer = 16
+collision_mask = 8
+script = ExtResource("3_hurtbox")
+health_component = NodePath("../DoorHealthComponent")
+is_breach_target = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RightDoorHurtbox"]
+shape = SubResource("BoxShape3D_lock_hurtbox")
+
 [node name="RoofGrappleAnchor" type="Node3D" parent="." groups=["grapple_anchors"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.4, 0)
 script = ExtResource("4_anchor")
@@ -192,9 +224,9 @@ anchor_type = 2
 is_roof_boarding_anchor = true
 
 [node name="VaultCrate1" parent="." instance=ExtResource("5_crate")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.8, 0.5, -2.2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -2.8)
 crate_variant = 2
 
 [node name="VaultCrate2" parent="." instance=ExtResource("5_crate")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.8, 0.5, 2.2)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 2.8)
 crate_variant = 1

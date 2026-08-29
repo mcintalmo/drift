@@ -47,8 +47,10 @@ var prev_yaw_rad: float = 0.0
 @onready var grapple_anchor: GrappleAnchorComponent = get_node_or_null("GrappleAnchorComponent") as GrappleAnchorComponent
 @onready var left_door: Node3D = get_node_or_null("VisualModel/LeftSlidingDoor") as Node3D
 @onready var right_door: Node3D = get_node_or_null("VisualModel/RightSlidingDoor") as Node3D
-@onready var coupler_vis: MeshInstance3D = get_node_or_null("VisualModel/CouplerVisual") as MeshInstance3D
+@onready var left_lock_vis: MeshInstance3D = get_node_or_null("VisualModel/LeftLock") as MeshInstance3D
+@onready var right_lock_vis: MeshInstance3D = get_node_or_null("VisualModel/RightLock") as MeshInstance3D
 @onready var lock_vis: MeshInstance3D = get_node_or_null("VisualModel/MagneticLock") as MeshInstance3D
+@onready var coupler_vis: MeshInstance3D = get_node_or_null("VisualModel/CouplerVisual") as MeshInstance3D
 
 func _ready() -> void:
 	sync_to_physics = false
@@ -128,14 +130,14 @@ func interact_plasma_torch(player: Node3D, donut: Node) -> void:
 	if donut and donut.has_method("start_channel"):
 		door_breach_started.emit()
 		donut.start_channel(
-			"Unlocking Sliding Door...",
+			"Unlocking Sliding Doors...",
 			1.5,
 			func() -> void:
 				breach_doors()
 				door_breach_completed.emit(),
 			func() -> void:
 				pass, # Cancelled
-			lock_vis if lock_vis else left_door if left_door else self,
+			left_lock_vis if left_lock_vis else right_lock_vis if right_lock_vis else lock_vis if lock_vis else self,
 			player,
 			4.5
 		)
@@ -150,10 +152,19 @@ func breach_doors() -> void:
 	
 	if door_hurtbox:
 		door_hurtbox.is_invulnerable = true
+	var right_hurtbox: HurtboxComponent = get_node_or_null("RightDoorHurtbox") as HurtboxComponent
+	if right_hurtbox:
+		right_hurtbox.is_invulnerable = true
 		
 	var door_col: CollisionShape3D = get_node_or_null("DoorCollision") as CollisionShape3D
 	if door_col:
 		door_col.set_deferred("disabled", true)
+	var left_col: CollisionShape3D = get_node_or_null("LeftDoorCollision") as CollisionShape3D
+	if left_col:
+		left_col.set_deferred("disabled", true)
+	var right_col: CollisionShape3D = get_node_or_null("RightDoorCollision") as CollisionShape3D
+	if right_col:
+		right_col.set_deferred("disabled", true)
 		
 	# Slide Left & Right Doors Open
 	if left_door:
@@ -165,14 +176,19 @@ func breach_doors() -> void:
 		if tw_r:
 			tw_r.tween_property(right_door, "position:z", right_door.position.z - 3.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		
-	# Turn lock light green
+	# Turn lock lights green
+	var green_mat: StandardMaterial3D = StandardMaterial3D.new()
+	green_mat.albedo_color = Color(0.1, 0.9, 0.3, 1)
+	green_mat.emission_enabled = true
+	green_mat.emission = Color(0.2, 1.0, 0.3, 1)
+	green_mat.emission_energy_multiplier = 4.0
+	
+	if left_lock_vis:
+		left_lock_vis.material_override = green_mat
+	if right_lock_vis:
+		right_lock_vis.material_override = green_mat
 	if lock_vis:
-		var mat: StandardMaterial3D = StandardMaterial3D.new()
-		mat.albedo_color = Color(0.1, 0.9, 0.3, 1)
-		mat.emission_enabled = true
-		mat.emission = Color(0.2, 1.0, 0.3, 1)
-		mat.emission_energy_multiplier = 4.0
-		lock_vis.material_override = mat
+		lock_vis.material_override = green_mat
 		
 	side_doors_breached.emit()
 

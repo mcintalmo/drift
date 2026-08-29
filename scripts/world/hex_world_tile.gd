@@ -15,6 +15,8 @@ const SectorBiomeDataClass = preload("res://scripts/resources/sector_biome_data.
 @export var jump_ramp_direction: Vector2 = Vector2.ZERO
 @export var is_boundary_wall: bool = false
 @export var is_boundary_void: bool = false
+@export var distance_to_rail_m: float = 999.0
+@export var is_railroad_active: bool = false
 
 var _static_body: StaticBody3D
 var _mesh_instance: MeshInstance3D
@@ -49,6 +51,8 @@ func initialize_tile(
 	jump_ramp_direction = ramp_dir
 	is_boundary_wall = boundary_wall_flag
 	is_boundary_void = boundary_void_flag
+	distance_to_rail_m = dist_to_rail_m
+	is_railroad_active = is_rail_active
 	
 	# 3D world center coordinates in X-Z plane
 	var world_x: float = tile_outer_radius_m * SQRT_3 * (float(coord.x) + float(coord.y) * 0.5)
@@ -311,6 +315,10 @@ func _spawn_procedural_features(seed_val: int) -> void:
 	if is_glacial_chasm or is_jump_ramp or not biome_data:
 		return
 	
+	# On active train lines, keep a strict 6.0m clearance zone completely clear of obstacles, debris, and crates
+	if is_railroad_active and distance_to_rail_m < 6.0:
+		return
+	
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = seed_val + (axial_coord.x * 73856093) ^ (axial_coord.y * 19349663)
 	
@@ -356,6 +364,7 @@ func _setup_hot_spring_basin() -> void:
 	
 	# Steaming Turquoise Water Surface Plane
 	var water_mesh: MeshInstance3D = MeshInstance3D.new()
+	water_mesh.name = "WaterSurface"
 	var cyl: CylinderMesh = CylinderMesh.new()
 	cyl.top_radius = tile_outer_radius_m * 0.70
 	cyl.bottom_radius = tile_outer_radius_m * 0.70
@@ -364,7 +373,8 @@ func _setup_hot_spring_basin() -> void:
 	water_mesh.position.y = water_y
 	
 	var water_mat: StandardMaterial3D = StandardMaterial3D.new()
-	water_mat.albedo_color = Color(0.10, 0.85, 0.80, 0.90)
+	water_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	water_mat.albedo_color = Color(0.10, 0.85, 0.80, 0.85)
 	water_mat.roughness = 0.08
 	water_mat.metallic = 0.15
 	water_mesh.material_override = water_mat
@@ -495,11 +505,13 @@ func _spawn_glacial_boulder(rng: RandomNumberGenerator) -> void:
 	boulder.add_child(col)
 	
 	add_child(boulder)
+	boulder.add_to_group(&"boulders")
 	_spawned_props.append(boulder)
 
 func _spawn_petrified_pine(rng: RandomNumberGenerator) -> void:
 	var tree: StaticBody3D = StaticBody3D.new()
 	tree.name = "PetrifiedPine"
+	tree.add_to_group(&"trees")
 	var tx: float = rng.randf_range(-2.5, 2.5)
 	var tz: float = rng.randf_range(-2.5, 2.5)
 	tree.position = Vector3(tx, 0, tz)

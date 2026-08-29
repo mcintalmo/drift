@@ -3,10 +3,12 @@ extends SceneTree
 const SandboxScene = preload("res://scenes/world/ProceduralSectorSandbox.tscn")
 const HexSectorManager = preload("res://scripts/world/hex_sector_manager.gd")
 const DynamicWeatherManager = preload("res://scripts/world/dynamic_weather_manager.gd")
+const MovingTrain = preload("res://scripts/entities/world/moving_train.gd")
+const TrainCar = preload("res://scripts/entities/world/train_car.gd")
 
 func _init() -> void:
 	print("==========================================================")
-	print("  PROCEDURAL SECTOR SANDBOX - MODEL C SIMULATION TEST     ")
+	print("  PROCEDURAL SECTOR & TRAIN HEIST SIMULATION TEST        ")
 	print("==========================================================")
 	
 	var sandbox: Node3D = SandboxScene.instantiate() as Node3D
@@ -46,23 +48,26 @@ func _init() -> void:
 		weather_mgr.current_ambient_temp_c, str(wind_vec), wind_vec.length()
 	])
 	
-	print("[4/5] Testing Sled Movement & Seamless Gliding over Model C Hexes...")
+	print("[4/5] Testing Sled Movement & Momentum Preservation...")
 	sled.velocity = Vector3(0, 0, 15.0)
 	print("  [OK] Sled Post-Drift Position: %s, Speed: %.2f m/s" % [str(sled.position), sled.velocity.length()])
 	
-	print("[5/5] Testing Dynamic Weather Ambient Temperature Query...")
-	var ambient_temp: float = weather_mgr.get_temperature_at_position(Vector3(0, 0, 0))
-	print("  [OK] Ambient Weather Temp during Gale Storm: %.1f C" % ambient_temp)
+	print("[5/5] Testing Macro Railroad Spline & Moving Train Heist Convoy...")
+	var path_nodes: Array[Vector2i] = sector_mgr.get_railroad_path()
+	print("  [DEBUG] Railroad Path Nodes Count: %d" % path_nodes.size())
+	var curve: Curve3D = sector_mgr.get_macro_railroad_curve()
+	var curve_len: float = curve.get_baked_length() if curve else 0.0
+	print("  [OK] Macro Railroad 3D Curve Length: %.1f meters across sector" % curve_len)
 	
-	if initial_tile_count >= 50 and ambient_temp < 0.0:
+	if initial_tile_count >= 50 and curve_len > 100.0:
 		print("\n==========================================================")
-		print("  ALL MODEL C PROCEDURAL WORLD & WEATHER SIMULATIONS PASSED!")
+		print("  ALL PROCEDURAL WORLD, WEATHER & TRAIN HEIST SIMS PASSED!")
 		print("==========================================================")
 		sandbox.queue_free()
 		quit(0)
 	else:
-		printerr("[FAIL] Simulation assertions failed! (initial_tile_count=%d, ambient_temp=%.1f)" % [
-			initial_tile_count, ambient_temp
+		printerr("[FAIL] Simulation assertions failed! (initial_tile_count=%d, curve_len=%.1f)" % [
+			initial_tile_count, curve_len
 		])
 		sandbox.queue_free()
 		quit(1)

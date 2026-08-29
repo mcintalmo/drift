@@ -92,19 +92,30 @@ func _update_terrain_occlusion(delta: float) -> void:
 	if cam_to_target_dist < 1.0:
 		return
 	
-	var sled_basis: Basis = target_node.global_transform.basis
-	var sled_forward: Vector3 = -sled_basis.z.normalized()
-	var sled_right: Vector3 = sled_basis.x.normalized()
-	
-	# Ray targets strictly placed ON the sled's physical hull bounds
-	var ray_targets: Array[Dictionary] = [
-		{"pos": target_center, "weight": 1.0}, # Direct central chassis core
-		{"pos": target_center + sled_forward * 0.7, "weight": 0.90}, # Sled nose
-		{"pos": target_center - sled_forward * 0.7, "weight": 0.90}, # Sled tail
-		{"pos": target_center + sled_right * 0.35, "weight": 0.85}, # Right rail
-		{"pos": target_center - sled_right * 0.35, "weight": 0.85}, # Left rail
-		{"pos": target_center + Vector3(0, 0.45, 0), "weight": 0.90} # Pilot cabin height
-	]
+	var ray_targets: Array[Dictionary] = []
+	if target_node is CharacterBody3D and not ("is_occupied" in target_node):
+		# Target is Pilot on foot: distribute rays across head, chest, hips, and lateral profile
+		var p_right: Vector3 = target_node.global_transform.basis.x.normalized()
+		ray_targets = [
+			{"pos": target_center, "weight": 1.0}, # Central core / pelvis
+			{"pos": target_center + Vector3(0, 0.65, 0), "weight": 0.95}, # Head
+			{"pos": target_center - Vector3(0, 0.45, 0), "weight": 0.85}, # Lower legs
+			{"pos": target_center + p_right * 0.35, "weight": 0.85}, # Right flank
+			{"pos": target_center - p_right * 0.35, "weight": 0.85}  # Left flank
+		]
+	else:
+		# Target is Sled / Vehicle chassis
+		var sled_basis: Basis = target_node.global_transform.basis
+		var sled_forward: Vector3 = -sled_basis.z.normalized()
+		var sled_right: Vector3 = sled_basis.x.normalized()
+		ray_targets = [
+			{"pos": target_center, "weight": 1.0}, # Direct central chassis core
+			{"pos": target_center + sled_forward * 0.7, "weight": 0.90}, # Sled nose
+			{"pos": target_center - sled_forward * 0.7, "weight": 0.90}, # Sled tail
+			{"pos": target_center + sled_right * 0.35, "weight": 0.85}, # Right rail
+			{"pos": target_center - sled_right * 0.35, "weight": 0.85}, # Left rail
+			{"pos": target_center + Vector3(0, 0.45, 0), "weight": 0.90} # Pilot cabin height
+		]
 	
 	var active_mesh_weights: Dictionary = {} # MeshInstance3D -> max_weight
 	
@@ -115,13 +126,17 @@ func _update_terrain_occlusion(delta: float) -> void:
 	for entry: Dictionary in ray_targets:
 		var ray_dest: Vector3 = entry["pos"]
 		var ray_weight: float = entry["weight"]
-		var ray_dist: float = cam_pos.distance_to(ray_dest)
+		var ray_dir: Vector3 = (ray_dest - cam_pos).normalized()
+		var total_ray_dist: float = cam_pos.distance_to(ray_dest)
 		
-		var exclude_list: Array[RID] = base_exclude.duplicate()
+		var cur_ray_from: Vector3 = cam_pos
 		
-		for _hit_step in range(8):
-			var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(cam_pos, ray_dest, 1) # Layer 1 = World Terrain & Props
-			query.exclude = exclude_list
+		for _hit_step in range(10):
+			if cur_ray_from.distance_to(ray_dest) < 0.25:
+				break
+				
+			var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(cur_ray_from, ray_dest, 1) # Layer 1 = World Terrain & Props
+			query.exclude = base_exclude
 			
 			var result: Dictionary = space_state.intersect_ray(query)
 			if result.is_empty():
@@ -129,11 +144,12 @@ func _update_terrain_occlusion(delta: float) -> void:
 				
 			var hit_pos: Vector3 = result.get("position", Vector3.ZERO)
 			var hit_normal: Vector3 = result.get("normal", Vector3.UP)
-			var hit_dist: float = cam_pos.distance_to(hit_pos)
+			var hit_dist_from_cam: float = cam_pos.distance_to(hit_pos)
 			var collider: Object = result.get("collider")
+			var shape_id: int = result.get("shape", -1)
 			
-			if collider is CollisionObject3D:
-				exclude_list.append((collider as CollisionObject3D).get_rid())
+			# Advance ray origin past the hit boundary so the ray pierces through the structure to find internal/rear walls
+			cur_ray_from = hit_pos + (ray_dir * 0.15)
 			
 			# 1. Reject ground/floor surfaces beneath and around sled
 			var is_floor_contact: bool = (hit_normal.y > floor_normal_threshold_y) and (hit_pos.y <= sled_floor_y + min_occlusion_clearance_y_m)
@@ -145,10 +161,10 @@ func _update_terrain_occlusion(delta: float) -> void:
 				continue
 			
 			# 3. Must be situated in the foreground between camera and target
-			if hit_dist < (ray_dist - 1.6):
+			if hit_dist_from_cam < (total_ray_dist - 0.6):
 				if collider is Node:
 					var meshes: Array[MeshInstance3D] = []
-					_collect_mesh_instances(collider as Node, meshes)
+					_collect_hit_mesh_instances(collider as Node, shape_id, meshes)
 					for mi: MeshInstance3D in meshes:
 						var prev_w: float = active_mesh_weights.get(mi, 0.0)
 						active_mesh_weights[mi] = maxf(prev_w, ray_weight)
@@ -156,9 +172,10 @@ func _update_terrain_occlusion(delta: float) -> void:
 				break
 	
 	# Register newly discovered occluding meshes with dedicated SHADOWS_ONLY shadow proxies
-	for mi: MeshInstance3D in active_mesh_weights:
-		if not is_instance_valid(mi):
+	for mi_key: Variant in active_mesh_weights.keys():
+		if not is_instance_valid(mi_key) or not (mi_key is MeshInstance3D):
 			continue
+		var mi: MeshInstance3D = mi_key as MeshInstance3D
 		if not _occluded_meshes.has(mi):
 			var mat: StandardMaterial3D = _get_or_create_standard_material(mi)
 			if mat:
@@ -179,18 +196,19 @@ func _update_terrain_occlusion(delta: float) -> void:
 				}
 	
 	# Smoothly interpolate alpha for all tracked meshes
-	var to_remove: Array[MeshInstance3D] = []
-	for mi: MeshInstance3D in _occluded_meshes:
-		if not is_instance_valid(mi):
-			to_remove.append(mi)
+	var to_remove: Array[Variant] = []
+	for mi_key: Variant in _occluded_meshes.keys():
+		if not is_instance_valid(mi_key) or not (mi_key is MeshInstance3D):
+			to_remove.append(mi_key)
 			continue
 			
-		var data: Dictionary = _occluded_meshes[mi]
+		var mi: MeshInstance3D = mi_key as MeshInstance3D
+		var data: Dictionary = _occluded_meshes.get(mi, {})
 		var mat: StandardMaterial3D = data.get("material", null)
 		var proxy: MeshInstance3D = data.get("proxy", null)
 		
-		if not mat or not is_instance_valid(mat):
-			to_remove.append(mi)
+		if not is_instance_valid(mat) or not (mat is StandardMaterial3D):
+			to_remove.append(mi_key)
 			continue
 			
 		var is_occluding: bool = active_mesh_weights.has(mi)
@@ -198,7 +216,7 @@ func _update_terrain_occlusion(delta: float) -> void:
 		var speed: float = fade_out_speed
 		
 		if is_occluding:
-			var weight: float = active_mesh_weights[mi]
+			var weight: float = active_mesh_weights.get(mi, 1.0)
 			target_alpha = lerpf(1.0, occluded_transparency_alpha, weight)
 			speed = fade_in_speed
 			
@@ -213,30 +231,122 @@ func _update_terrain_occlusion(delta: float) -> void:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 			if proxy and is_instance_valid(proxy):
 				proxy.queue_free()
-			to_remove.append(mi)
+			to_remove.append(mi_key)
 			
-	for mi: MeshInstance3D in to_remove:
-		_occluded_meshes.erase(mi)
+	for mi_key: Variant in to_remove:
+		_occluded_meshes.erase(mi_key)
+
+func _collect_hit_mesh_instances(collider: Object, shape_id: int, out_meshes: Array[MeshInstance3D]) -> void:
+	if not collider or not (collider is Node):
+		return
+		
+	var col_node: Node = collider as Node
+	
+	# 1. If this is a composite body with distinct collision shapes (like ArmoredBoxcar)
+	if collider is CollisionObject3D and shape_id >= 0 and collider.has_method("shape_find_owner"):
+		var owner_id: int = (collider as CollisionObject3D).shape_find_owner(shape_id)
+		var shape_owner: Object = (collider as CollisionObject3D).shape_owner_get_owner(owner_id)
+		if shape_owner is CollisionShape3D:
+			var shape_name: String = (shape_owner as CollisionShape3D).name
+			var specific_mesh: MeshInstance3D = _find_matching_mesh_for_collision_shape(col_node, shape_name)
+			if specific_mesh and is_instance_valid(specific_mesh) and specific_mesh.name != "OcclusionShadowProxy":
+				if _is_mesh_eligible_for_occlusion(specific_mesh):
+					if not out_meshes.has(specific_mesh):
+						out_meshes.append(specific_mesh)
+						
+					# If this is a train car flank wall/doorway and doors are unlocked, also include the open sliding door
+					var car: Node = _find_parent_train_car(col_node)
+					if car and int(car.get("car_state")) == 1: # CarState.UNLOCKED
+						if shape_name.begins_with("Left"):
+							var l_door: MeshInstance3D = col_node.find_child("LeftSlidingDoor", true, false) as MeshInstance3D
+							if l_door and not out_meshes.has(l_door) and _is_mesh_eligible_for_occlusion(l_door):
+								out_meshes.append(l_door)
+						elif shape_name.begins_with("Right"):
+							var r_door: MeshInstance3D = col_node.find_child("RightSlidingDoor", true, false) as MeshInstance3D
+							if r_door and not out_meshes.has(r_door) and _is_mesh_eligible_for_occlusion(r_door):
+								out_meshes.append(r_door)
+					return
+	
+	# 2. Fallback: if no specific sub-mesh was mapped, collect from the root object (or HexWorldTile)
+	_collect_mesh_instances(col_node, out_meshes)
+
+func _find_matching_mesh_for_collision_shape(col_node: Node, shape_name: String) -> MeshInstance3D:
+	var candidates: Array[String] = []
+	if shape_name.ends_with("Collision"):
+		var base: String = shape_name.trim_suffix("Collision")
+		candidates.append(base + "Mesh")
+		candidates.append(base + "SlidingDoor")
+		candidates.append(base)
+		if base.ends_with("Door"):
+			var side: String = base.trim_suffix("Door") # "Left" or "Right"
+			candidates.append(side + "SlidingDoor")
+	elif shape_name.begins_with("Col"):
+		var base: String = shape_name.trim_prefix("Col")
+		candidates.append(base + "Mesh")
+		candidates.append(base)
+	else:
+		candidates.append(shape_name + "Mesh")
+		candidates.append(shape_name)
+		
+	for c_name: String in candidates:
+		var mi: MeshInstance3D = col_node.find_child(c_name, true, false) as MeshInstance3D
+		if mi and is_instance_valid(mi):
+			return mi
+	return null
+
+func _is_mesh_eligible_for_occlusion(node: Node) -> bool:
+	if not node:
+		return false
+	if node is GroundCrate or node.is_in_group(&"loot_crates") or node.name.begins_with("VaultCrate") or node.name.begins_with("GroundCrate"):
+		return false
+	if node.name.ends_with("SlidingDoor") or node.name.ends_with("Lock") or node.name == "MagneticLock":
+		var car: Node = _find_parent_train_car(node)
+		if car and int(car.get("car_state")) == 0: # CarState.LOCKED
+			return false
+	if node.is_in_group(&"interactable_doors") or node.get_meta("opaque_interactable", false):
+		return false
+	return true
 
 func _collect_mesh_instances(node: Node, out_meshes: Array[MeshInstance3D]) -> void:
+	if not node:
+		return
+		
+	# If collider is a sub-body of a HexWorldTile (e.g. TileBody), collect from the root tile so terrain + water basin fade together
+	var root_target: Node = node
+	if root_target.get_parent() is HexWorldTile:
+		root_target = root_target.get_parent()
+		
+	_collect_mesh_instances_recursive(root_target, out_meshes)
+
+func _collect_mesh_instances_recursive(node: Node, out_meshes: Array[MeshInstance3D]) -> void:
+	if not node:
+		return
+		
+	if not _is_mesh_eligible_for_occlusion(node):
+		return
+		
 	if node is MeshInstance3D and node.name != "OcclusionShadowProxy":
 		if not out_meshes.has(node as MeshInstance3D):
 			out_meshes.append(node as MeshInstance3D)
-	else:
-		for child in node.get_children():
-			if child is MeshInstance3D and child.name != "OcclusionShadowProxy":
-				if not out_meshes.has(child as MeshInstance3D):
-					out_meshes.append(child as MeshInstance3D)
-		if node.get_parent() is Node3D:
-			for sibling in node.get_parent().get_children():
-				if sibling is MeshInstance3D and sibling.name != "OcclusionShadowProxy":
-					if not out_meshes.has(sibling as MeshInstance3D):
-						out_meshes.append(sibling as MeshInstance3D)
+			
+	for child: Node in node.get_children():
+		_collect_mesh_instances_recursive(child, out_meshes)
+
+func _find_parent_train_car(node: Node) -> Node:
+	var cur: Node = node
+	while cur:
+		if cur is TrainCar or cur.has_method("breach_doors"):
+			return cur
+		cur = cur.get_parent()
+	return null
 
 func _get_or_create_standard_material(mi: MeshInstance3D) -> StandardMaterial3D:
 	var mat: Material = mi.material_override
 	if not mat and mi.mesh:
 		mat = mi.mesh.surface_get_material(0)
+		if mat is StandardMaterial3D:
+			mat = (mat as StandardMaterial3D).duplicate()
+			mi.material_override = mat
 	return mat as StandardMaterial3D if mat is StandardMaterial3D else null
 
 func add_trauma(amount: float) -> void:

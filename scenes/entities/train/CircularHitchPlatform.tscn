@@ -1,0 +1,144 @@
+[gd_scene load_steps=18 format=3 uid="uid://b8m3pl7x9h1q"]
+
+[ext_resource type="Script" path="res://scripts/entities/world/train_hitch_platform.gd" id="1_hitch"]
+[ext_resource type="Script" path="res://scripts/components/health_component.gd" id="2_health"]
+[ext_resource type="Script" path="res://scripts/components/hurtbox_component.gd" id="3_hurtbox"]
+[ext_resource type="Script" path="res://scripts/components/grapple_anchor_component.gd" id="4_anchor"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_platform"]
+height = 1.3
+radius = 1.65
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_grate"]
+albedo_color = Color(0.18, 0.21, 0.24, 1)
+metallic = 0.85
+roughness = 0.35
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_grate"]
+material = SubResource("StandardMaterial3D_grate")
+top_radius = 1.6
+bottom_radius = 1.6
+height = 0.22
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_undercarriage"]
+albedo_color = Color(0.12, 0.14, 0.16, 1)
+metallic = 0.9
+roughness = 0.4
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_undercarriage"]
+material = SubResource("StandardMaterial3D_undercarriage")
+top_radius = 1.55
+bottom_radius = 1.45
+height = 0.75
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rim"]
+albedo_color = Color(0.9, 0.7, 0.1, 1)
+metallic = 0.8
+roughness = 0.3
+
+[sub_resource type="TorusMesh" id="TorusMesh_rim"]
+material = SubResource("StandardMaterial3D_rim")
+inner_radius = 1.48
+outer_radius = 1.64
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_coupler"]
+albedo_color = Color(0.9, 0.4, 0.1, 1)
+emission_enabled = true
+emission = Color(1, 0.45, 0.05, 1)
+emission_energy_multiplier = 4.5
+
+[sub_resource type="BoxMesh" id="BoxMesh_coupler"]
+material = SubResource("StandardMaterial3D_coupler")
+size = Vector3(0.8, 0.6, 0.8)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_coupler_col"]
+size = Vector3(1.4, 1.1, 1.4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_post"]
+albedo_color = Color(0.25, 0.28, 0.32, 1)
+metallic = 0.9
+roughness = 0.3
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_post"]
+material = SubResource("StandardMaterial3D_post")
+top_radius = 0.045
+bottom_radius = 0.045
+height = 0.8
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_beacon"]
+albedo_color = Color(1, 0.5, 0.1, 1)
+emission_enabled = true
+emission = Color(1, 0.5, 0.1, 1)
+emission_energy_multiplier = 3.0
+
+[sub_resource type="SphereMesh" id="SphereMesh_beacon"]
+material = SubResource("StandardMaterial3D_beacon")
+radius = 0.07
+height = 0.14
+
+[node name="CircularHitchPlatform" type="AnimatableBody3D" groups=["train_convoy"]]
+collision_layer = 1
+collision_mask = 7
+script = ExtResource("1_hitch")
+car_length_m = 3.2
+car_width_m = 3.2
+car_height_m = 2.0
+
+[node name="HitchCollision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+shape = SubResource("CylinderShape3D_platform")
+
+[node name="VisualModel" type="Node3D" parent="."]
+
+[node name="PlatformGrateMesh" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
+mesh = SubResource("CylinderMesh_grate")
+
+[node name="UndercarriageMesh" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.40, 0)
+mesh = SubResource("CylinderMesh_undercarriage")
+
+[node name="SafetyRimMesh" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0)
+mesh = SubResource("TorusMesh_rim")
+
+[node name="CouplerVisual" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, 0)
+mesh = SubResource("BoxMesh_coupler")
+
+[node name="Post1" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.45, 1.25, 0)
+mesh = SubResource("CylinderMesh_post")
+
+[node name="Post2" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.45, 1.25, 0)
+mesh = SubResource("CylinderMesh_post")
+
+[node name="Beacon1" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.45, 1.68, 0)
+mesh = SubResource("SphereMesh_beacon")
+
+[node name="Beacon2" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.45, 1.68, 0)
+mesh = SubResource("SphereMesh_beacon")
+
+[node name="CouplerHealthComponent" type="Node" parent="."]
+script = ExtResource("2_health")
+max_health = 80.0
+
+[node name="CouplerHurtbox" type="Area3D" parent="." node_paths=PackedStringArray("health_component")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, 0)
+collision_layer = 16
+collision_mask = 8
+script = ExtResource("3_hurtbox")
+health_component = NodePath("../CouplerHealthComponent")
+is_breach_target = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CouplerHurtbox"]
+shape = SubResource("BoxShape3D_coupler_col")
+
+[node name="CouplerGrappleAnchor" type="Node3D" parent="." groups=["grapple_anchors"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, 0)
+script = ExtResource("4_anchor")
+anchor_type = 2
+is_roof_boarding_anchor = false

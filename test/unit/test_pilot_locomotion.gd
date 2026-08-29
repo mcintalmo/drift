@@ -6,7 +6,11 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_jetpack_thrust_and_fuel_consumption())
 	results.append(_test_jetpack_recharges_on_ground())
 	results.append(_test_pilot_mount_dismount_sled())
+	results.append(_test_pilot_dismount_momentum_inheritance())
 	results.append(_test_pilot_backpack_imbalance_pull())
+	results.append(_test_pilot_grapple_dynamic_tracking())
+	results.append(_test_pilot_grapple_roof_boarding_boost())
+	results.append(_test_pilot_moving_train_roof_physics_coupling())
 	return results
 
 func _test_jetpack_thrust_and_fuel_consumption() -> Dictionary:
@@ -71,6 +75,27 @@ func _test_pilot_mount_dismount_sled() -> Dictionary:
 		"message": "Pilot mounted and dismounted sled successfully"
 	}
 
+func _test_pilot_dismount_momentum_inheritance() -> Dictionary:
+	var pilot: Pilot = Pilot.new()
+	var sled: CharacterBody3D = CharacterBody3D.new()
+	sled.position = Vector3(10.0, 0.0, 5.0)
+	sled.velocity = Vector3(14.0, 0.0, -8.0) # Sled speeding at ~16 m/s alongside train
+	
+	pilot.mount_into_sled(sled)
+	pilot.dismount_from_sled()
+	
+	# Pilot velocity should retain sled's horizontal velocity (14.0, -8.0) + upward jump
+	var passed: bool = (pilot.velocity.x == 14.0) and (pilot.velocity.z == -8.0) and (pilot.velocity.y > 0.0)
+	var vel_str: String = str(pilot.velocity)
+	
+	pilot.free()
+	sled.free()
+	return {
+		"name": "test_pilot_dismount_momentum_inheritance",
+		"passed": passed,
+		"message": "Dismounted pilot inherited sled velocity: %s (passed: %s)" % [vel_str, str(passed)]
+	}
+
 func _test_pilot_backpack_imbalance_pull() -> Dictionary:
 	var inv: HexInventoryComponent = HexInventoryComponent.new()
 	var mount: ContainerMountData = ContainerMountData.new()
@@ -98,4 +123,77 @@ func _test_pilot_backpack_imbalance_pull() -> Dictionary:
 		"name": "test_pilot_backpack_imbalance_pull",
 		"passed": passed,
 		"message": "45kg asymmetric backpack produced lateral imbalance pull of %.2f (expected > 2.0)" % lateral_pull
+	}
+
+func _test_pilot_grapple_dynamic_tracking() -> Dictionary:
+	var grapple: PilotGrappleComponent = PilotGrappleComponent.new()
+	var anchor: GrappleAnchorComponent = GrappleAnchorComponent.new()
+	anchor.anchor_type = GrappleAnchorComponent.AnchorType.TRAIN_CAR
+	anchor.position = Vector3(0.0, 3.6, 10.0)
+	
+	grapple.target_anchor = anchor
+	grapple.is_grappling = true
+	grapple.is_target_heavy = true
+	
+	# Moving train moves anchor +5m forward (Z=15.0)
+	anchor.position = Vector3(0.0, 3.6, 15.0)
+	var tracked_pos: Vector3 = grapple.get_current_target_position()
+	
+	var passed: bool = is_equal_approx(tracked_pos.z, 15.0) and is_equal_approx(tracked_pos.y, 3.6)
+	
+	grapple.free()
+	anchor.free()
+	return {
+		"name": "test_pilot_grapple_dynamic_tracking",
+		"passed": passed,
+		"message": "Wrist grapple tracked moving train anchor to: %s (passed: %s)" % [str(tracked_pos), str(passed)]
+	}
+
+func _test_pilot_grapple_roof_boarding_boost() -> Dictionary:
+	var grapple: PilotGrappleComponent = PilotGrappleComponent.new()
+	var anchor: GrappleAnchorComponent = GrappleAnchorComponent.new()
+	anchor.anchor_type = GrappleAnchorComponent.AnchorType.TRAIN_CAR
+	anchor.is_roof_boarding_anchor = true
+	anchor.position = Vector3(0.0, 3.6, 10.0)
+	
+	grapple.target_anchor = anchor
+	grapple.is_grappling = true
+	grapple.is_target_heavy = true
+	
+	# Pilot arrives within 1.5m of roof anchor (pilot at Y=3.0, Z=9.0)
+	var landing_impulse: Vector3 = grapple.process_grapple(0.016, Vector3(0.0, 3.0, 9.0))
+	var is_still_grappling: bool = grapple.is_grappling
+	
+	# Grapple should release and grant gentle settling landing
+	var passed: bool = (not is_still_grappling) and is_equal_approx(landing_impulse.y, -1.0)
+	
+	grapple.free()
+	anchor.free()
+	return {
+		"name": "test_pilot_grapple_roof_boarding_boost",
+		"passed": passed,
+		"message": "Landing vector upon roof arrival: %s, released=%s (passed: %s)" % [
+			str(landing_impulse), str(not is_still_grappling), str(passed)
+		]
+	}
+
+func _test_pilot_moving_train_roof_physics_coupling() -> Dictionary:
+	var car: TrainCar = TrainCar.new()
+	car.forward_speed_ms = 14.5
+	car.rotation = Vector3.ZERO
+	
+	var walk_state: Node = load("res://scripts/state_machine/pilot_states/pilot_walking_state.gd").new()
+	var extracted_vel: Vector3 = walk_state.call("_extract_body_velocity", car)
+	
+	# Moving train velocity along forward vector -Z (0, 0, -14.5)
+	var passed: bool = is_equal_approx(extracted_vel.z, -14.5) and is_equal_approx(extracted_vel.x, 0.0)
+	
+	car.free()
+	walk_state.free()
+	return {
+		"name": "test_pilot_moving_train_roof_physics_coupling",
+		"passed": passed,
+		"message": "Moving train roof velocity coupled to pilot: %s (expected 14.5 m/s forward) [passed: %s]" % [
+			str(extracted_vel), str(passed)
+		]
 	}

@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://b087qwx0e8r1"]
+
+[ext_resource type="Script" path="res://scripts/ui/action_progress_donut.gd" id="1_donut"]
+
+[node name="ActionProgressDonut" type="Control" groups=["action_donut"]]
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -45.0
+offset_top = -45.0
+offset_right = 45.0
+offset_bottom = 45.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_donut")

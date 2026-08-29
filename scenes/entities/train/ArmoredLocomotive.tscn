@@ -1,0 +1,79 @@
+[gd_scene load_steps=12 format=3 uid="uid://df5m2lap87q1"]
+
+[ext_resource type="Script" path="res://scripts/entities/world/train_car.gd" id="1_train_car"]
+[ext_resource type="Script" path="res://scripts/components/grapple_anchor_component.gd" id="4_anchor"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_loco"]
+size = Vector3(4.4, 4.8, 10.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hull"]
+albedo_color = Color(0.22, 0.28, 0.25, 1)
+metallic = 0.8
+roughness = 0.35
+
+[sub_resource type="BoxMesh" id="BoxMesh_body"]
+material = SubResource("StandardMaterial3D_hull")
+size = Vector3(4.2, 4.2, 10.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_plow"]
+albedo_color = Color(0.18, 0.20, 0.22, 1)
+metallic = 0.9
+roughness = 0.25
+
+[sub_resource type="PrismMesh" id="PrismMesh_plow"]
+material = SubResource("StandardMaterial3D_plow")
+size = Vector3(4.6, 2.4, 2.2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_light"]
+albedo_color = Color(0.1, 0.9, 0.3, 1)
+emission_enabled = true
+emission = Color(0.2, 1, 0.4, 1)
+emission_energy_multiplier = 8.0
+
+[sub_resource type="SphereMesh" id="SphereMesh_lamp"]
+material = SubResource("StandardMaterial3D_light")
+radius = 0.32
+height = 0.64
+
+[node name="ArmoredLocomotive" type="AnimatableBody3D" groups=["train_convoy"]]
+collision_layer = 1
+collision_mask = 7
+script = ExtResource("1_train_car")
+car_length_m = 10.5
+car_width_m = 4.2
+car_height_m = 4.8
+
+[node name="LocoCollision" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.4, 0)
+shape = SubResource("BoxShape3D_loco")
+
+[node name="VisualModel" type="Node3D" parent="."]
+
+[node name="BodyMesh" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, 0)
+mesh = SubResource("BoxMesh_body")
+
+[node name="PlowMesh" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 1.1, -5.4)
+mesh = SubResource("PrismMesh_plow")
+
+[node name="HeadlampLeft" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.4, 3.0, -5.2)
+mesh = SubResource("SphereMesh_lamp")
+
+[node name="HeadlampRight" type="MeshInstance3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.4, 3.0, -5.2)
+mesh = SubResource("SphereMesh_lamp")
+
+[node name="CorpoBeam" type="SpotLight3D" parent="VisualModel"]
+transform = Transform3D(1, 0, 0, 0, 0.984808, 0.173648, 0, -0.173648, 0.984808, 0, 3.2, -5.3)
+light_color = Color(0.2, 1, 0.45, 1)
+light_energy = 8.0
+spot_range = 75.0
+spot_angle = 40.0
+
+[node name="RoofGrappleAnchor" type="Node3D" parent="." groups=["grapple_anchors"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.6, 0)
+script = ExtResource("4_anchor")
+anchor_type = 2
+is_roof_boarding_anchor = true

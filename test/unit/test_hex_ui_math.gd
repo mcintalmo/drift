@@ -14,6 +14,12 @@ func run_tests() -> Array[Dictionary]:
 	results.append(_test_quick_transfer_search())
 	results.append(_test_multiple_identical_items_preserved())
 	results.append(_test_heavy_cargo_com_shift())
+	results.append(_test_multi_vault_auto_swapping())
+	results.append(_test_standalone_backpack_display())
+	results.append(_test_vault_to_backpack_switching())
+	results.append(_test_tab_button_signal_binding())
+	results.append(_test_single_crate_and_backpack_swapping())
+	results.append(_test_on_sled_locked_inventory())
 	return results
 
 func _test_axial_to_pixel_roundtrip() -> Dictionary:
@@ -175,4 +181,306 @@ func _test_heavy_cargo_com_shift() -> Dictionary:
 		"name": "test_heavy_cargo_com_shift",
 		"passed": passed,
 		"message": "65kg heavy cargo shifted container COM lateral offset to +%.3fm" % com.x
+	}
+
+func _test_multi_vault_auto_swapping() -> Dictionary:
+	var ui: HexInventoryUI = HexInventoryUI.new()
+	ui.is_pilot_mounted = false # On foot
+	
+	# Simulate 2 discovered vault crates
+	var crate1: GroundCrate = GroundCrate.new()
+	crate1.name = "VaultCrate1"
+	var crate2: GroundCrate = GroundCrate.new()
+	crate2.name = "VaultCrate2"
+	ui.discovered_crates = [crate1, crate2]
+	
+	# Initial configuration: Left has Vault 1 (idx 0), Right has Vault 2 (idx 1)
+	ui.left_container_type = HexInventoryUI.ContainerType.GROUND_CRATE
+	ui.selected_left_crate_idx = 0
+	ui.right_container_type = HexInventoryUI.ContainerType.GROUND_CRATE
+	ui.selected_right_crate_idx = 1
+	
+	# User on Left panel clicks Vault 2 (idx 1) -> Must SWAP!
+	ui._set_left_container(HexInventoryUI.ContainerType.GROUND_CRATE, 1)
+	
+	var passed: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
+		ui.selected_left_crate_idx == 1 and
+		ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
+		ui.selected_right_crate_idx == 0
+	)
+	
+	crate1.free()
+	crate2.free()
+	ui.free()
+	
+	return {
+		"name": "test_multi_vault_auto_swapping",
+		"passed": passed,
+		"message": "Selecting active right container on left panel cleanly swapped Left (Vault 2) <-> Right (Vault 1)"
+	}
+
+func _test_standalone_backpack_display() -> Dictionary:
+	var ui: HexInventoryUI = HexInventoryUI.new()
+	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
+	ui.backpack_inventory = bp_inv
+	ui.discovered_crates = []
+	ui.sled_inventory = null
+	
+	# When no crates and no sleds are in range, opening contextual inventory sets Left=Backpack, Right=NONE
+	ui.open_contextual_inventory()
+	
+	var passed: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and
+		ui.right_container_type == HexInventoryUI.ContainerType.NONE and
+		ui.selected_right_crate_idx == -1
+	)
+	
+	bp_inv.free()
+	ui.free()
+	
+	return {
+		"name": "test_standalone_backpack_display",
+		"passed": passed,
+		"message": "When no secondary containers exist, Left shows Backpack and Right is NONE"
+	}
+
+func _test_vault_to_backpack_switching() -> Dictionary:
+	var ui: HexInventoryUI = HexInventoryUI.new()
+	ui.is_pilot_mounted = false # On foot
+	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
+	ui.backpack_inventory = bp_inv
+	
+	var crate1: GroundCrate = GroundCrate.new()
+	crate1.name = "VaultCrate1"
+	var crate2: GroundCrate = GroundCrate.new()
+	crate2.name = "VaultCrate2"
+	ui.discovered_crates = [crate1, crate2]
+	
+	# Start with Left=Vault 1, Right=Vault 2
+	ui.left_container_type = HexInventoryUI.ContainerType.GROUND_CRATE
+	ui.selected_left_crate_idx = 0
+	ui.right_container_type = HexInventoryUI.ContainerType.GROUND_CRATE
+	ui.selected_right_crate_idx = 1
+	
+	# 1. Switch Left to Backpack (Backpack is not on Right)
+	ui._set_left_container(HexInventoryUI.ContainerType.PILOT_BACKPACK)
+	var step1_ok: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and
+		ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
+		ui.selected_right_crate_idx == 1
+	)
+	
+	# 2. Click Vault 2 on Left (Vault 2 IS currently on Right -> SWAP!)
+	ui._set_left_container(HexInventoryUI.ContainerType.GROUND_CRATE, 1)
+	var step2_ok: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
+		ui.selected_left_crate_idx == 1 and
+		ui.right_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK
+	)
+	
+	# 3. Click Backpack on Left (Backpack IS currently on Right -> SWAP!)
+	ui._set_left_container(HexInventoryUI.ContainerType.PILOT_BACKPACK)
+	var step3_ok: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and
+		ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
+		ui.selected_right_crate_idx == 1
+	)
+	
+	crate1.free()
+	crate2.free()
+	bp_inv.free()
+	ui.free()
+	
+	var passed: bool = step1_ok and step2_ok and step3_ok
+	return {
+		"name": "test_vault_to_backpack_switching",
+		"passed": passed,
+		"message": "Seamlessly switched and swapped between Vaults and Backpack across Left & Right panels on foot"
+	}
+
+func _test_tab_button_signal_binding() -> Dictionary:
+	var ui: HexInventoryUI = HexInventoryUI.new()
+	ui.is_pilot_mounted = false # On foot
+	var left_bar: HBoxContainer = HBoxContainer.new()
+	var right_bar: HBoxContainer = HBoxContainer.new()
+	ui.left_tab_bar = left_bar
+	ui.right_tab_bar = right_bar
+	
+	var crate1: GroundCrate = GroundCrate.new()
+	crate1.name = "VaultCrate1"
+	crate1.crate_state = GroundCrate.CrateState.UNLOOTED
+	var crate2: GroundCrate = GroundCrate.new()
+	crate2.name = "VaultCrate2"
+	crate2.crate_state = GroundCrate.CrateState.UNLOOTED
+	ui.discovered_crates = [crate1, crate2]
+	
+	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
+	ui.backpack_inventory = bp_inv
+	
+	# Start Left=Vault 1 (0), Right=Vault 2 (1)
+	ui.left_container_type = HexInventoryUI.ContainerType.GROUND_CRATE
+	ui.selected_left_crate_idx = 0
+	ui.right_container_type = HexInventoryUI.ContainerType.GROUND_CRATE
+	ui.selected_right_crate_idx = 1
+	
+	ui._rebuild_tab_bar(left_bar, true)
+	ui._rebuild_tab_bar(right_bar, false)
+	
+	# Left bar excludes Vault 2 (Crate 1): contains [CrateTab_0, BackpackTab]
+	var btn_vault1: Button = left_bar.get_node_or_null("CrateTab_0") as Button
+	var btn_bp_left: Button = left_bar.get_node_or_null("BackpackTab") as Button
+	var has_vault2_on_left: bool = left_bar.get_node_or_null("CrateTab_1") != null
+	
+	# Right bar excludes Vault 1 (Crate 0): contains [CrateTab_1, BackpackTab]
+	var btn_vault2_right: Button = right_bar.get_node_or_null("CrateTab_1") as Button
+	var has_vault1_on_right: bool = right_bar.get_node_or_null("CrateTab_0") != null
+	
+	var mutual_exclusion_ok: bool = (not has_vault2_on_left) and (not has_vault1_on_right)
+	
+	# 1. Click Backpack button on Left bar
+	btn_bp_left.emit_signal(&"pressed")
+	var step1_ok: bool = (ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_right_crate_idx == 1)
+	
+	# Now Left=Backpack, Right=Vault 2 (1).
+	# Left bar excludes Vault 2: contains [CrateTab_0, BackpackTab]
+	# Right bar excludes Backpack: contains [CrateTab_0, CrateTab_1]
+	var btn_vault1_right: Button = right_bar.get_node_or_null("CrateTab_0") as Button
+	
+	# 2. Click Vault 1 on Right bar
+	btn_vault1_right.emit_signal(&"pressed")
+	var step2_ok: bool = (ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and ui.selected_right_crate_idx == 0)
+	
+	crate1.free()
+	crate2.free()
+	bp_inv.free()
+	left_bar.free()
+	right_bar.free()
+	ui.free()
+	
+	var passed: bool = mutual_exclusion_ok and step1_ok and step2_ok
+	return {
+		"name": "test_tab_button_signal_binding",
+		"passed": passed,
+		"message": "Opposite panel active container is mutually excluded from tabs and clicking tabs seamlessly changes selection"
+	}
+
+func _test_single_crate_and_backpack_swapping() -> Dictionary:
+	var ui: HexInventoryUI = HexInventoryUI.new()
+	ui.is_pilot_mounted = false # On foot
+	var left_bar: HBoxContainer = HBoxContainer.new()
+	var right_bar: HBoxContainer = HBoxContainer.new()
+	ui.left_tab_bar = left_bar
+	ui.right_tab_bar = right_bar
+	
+	var crate1: GroundCrate = GroundCrate.new()
+	crate1.name = "GroundCrate1"
+	crate1.crate_state = GroundCrate.CrateState.UNLOOTED
+	ui.discovered_crates = []
+	ui.discovered_crates.append(crate1)
+	
+	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
+	ui.backpack_inventory = bp_inv
+	
+	var sled_inv: HexInventoryComponent = HexInventoryComponent.new()
+	ui.sled_inventory = sled_inv
+	
+	# When opening contextual inventory on foot with Crate + Sled:
+	# Initial: Left=Backpack, Right=Crate
+	ui.open_contextual_inventory()
+	
+	var init_ok: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and
+		ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
+		ui.selected_right_crate_idx == 0
+	)
+	
+	# Left bar excludes Crate -> shows [BackpackTab, SledTab]
+	var btn_bp_left: Button = left_bar.get_node_or_null("BackpackTab") as Button
+	var btn_sled_left: Button = left_bar.get_node_or_null("SledTab") as Button
+	var no_crate_on_left: bool = (left_bar.get_node_or_null("CrateTab_0") == null)
+	
+	# Right bar excludes Backpack -> shows [CrateTab_0, SledTab]
+	var btn_crate_right: Button = right_bar.get_node_or_null("CrateTab_0") as Button
+	var btn_sled_right: Button = right_bar.get_node_or_null("SledTab") as Button
+	var no_bp_on_right: bool = (right_bar.get_node_or_null("BackpackTab") == null)
+	
+	var tabs_ok: bool = (btn_bp_left != null) and (btn_sled_left != null) and no_crate_on_left and (btn_crate_right != null) and (btn_sled_right != null) and no_bp_on_right
+	
+	# Player clicks Sled on Left bar: Left becomes Sled, Right remains Crate!
+	btn_sled_left.emit_signal(&"pressed")
+	var switch_ok: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.SLED_CARGO_POD and
+		ui.right_container_type == HexInventoryUI.ContainerType.GROUND_CRATE and
+		ui.selected_right_crate_idx == 0
+	)
+	
+	# Left bar now excludes Crate -> shows [BackpackTab, SledTab]
+	# Right bar now excludes Sled -> shows [CrateTab_0, BackpackTab]
+	var has_bp_on_right_after: bool = (right_bar.get_node_or_null("BackpackTab") != null)
+	var no_sled_on_right_after: bool = (right_bar.get_node_or_null("SledTab") == null)
+	
+	crate1.free()
+	bp_inv.free()
+	sled_inv.free()
+	left_bar.free()
+	right_bar.free()
+	ui.free()
+	
+	var passed: bool = init_ok and tabs_ok and switch_ok and has_bp_on_right_after and no_sled_on_right_after
+	return {
+		"name": "test_single_crate_and_backpack_swapping",
+		"passed": passed,
+		"message": "On foot: Left opens to Backpack and Right to Crate with full mutual tab switching between Backpack, Sled, and Crates"
+	}
+
+func _test_on_sled_locked_inventory() -> Dictionary:
+	var ui: HexInventoryUI = HexInventoryUI.new()
+	ui.is_pilot_mounted = true # Mounted on sled
+	var left_bar: HBoxContainer = HBoxContainer.new()
+	var right_bar: HBoxContainer = HBoxContainer.new()
+	ui.left_tab_bar = left_bar
+	ui.right_tab_bar = right_bar
+	
+	var bp_inv: HexInventoryComponent = HexInventoryComponent.new()
+	ui.backpack_inventory = bp_inv
+	var sled_inv: HexInventoryComponent = HexInventoryComponent.new()
+	ui.sled_inventory = sled_inv
+	
+	# Set inventory views on the sled
+	ui.left_container_type = HexInventoryUI.ContainerType.PILOT_BACKPACK
+	ui.right_container_type = HexInventoryUI.ContainerType.SLED_CARGO_POD
+	ui._rebuild_tab_bar(left_bar, true)
+	ui._rebuild_tab_bar(right_bar, false)
+	
+	var open_ok: bool = (
+		ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK and
+		ui.right_container_type == HexInventoryUI.ContainerType.SLED_CARGO_POD
+	)
+	
+	# Left bar only shows Backpack; Right bar only shows Sled
+	var btn_bp_left: Button = left_bar.get_node_or_null("BackpackTab") as Button
+	var no_sled_on_left: bool = (left_bar.get_node_or_null("SledTab") == null)
+	var btn_sled_right: Button = right_bar.get_node_or_null("SledTab") as Button
+	var no_bp_on_right: bool = (right_bar.get_node_or_null("BackpackTab") == null)
+	
+	# Attempting to switch Left to Sled or Ground Crate is rejected while on the sled
+	ui._set_left_container(HexInventoryUI.ContainerType.SLED_CARGO_POD)
+	var left_still_bp: bool = (ui.left_container_type == HexInventoryUI.ContainerType.PILOT_BACKPACK)
+	
+	ui._set_right_container(HexInventoryUI.ContainerType.PILOT_BACKPACK)
+	var right_still_sled: bool = (ui.right_container_type == HexInventoryUI.ContainerType.SLED_CARGO_POD)
+	
+	var passed: bool = open_ok and (btn_bp_left != null) and no_sled_on_left and (btn_sled_right != null) and no_bp_on_right and left_still_bp and right_still_sled
+	
+	bp_inv.free()
+	sled_inv.free()
+	left_bar.free()
+	right_bar.free()
+	ui.free()
+	
+	return {
+		"name": "test_on_sled_locked_inventory",
+		"passed": passed,
+		"message": "When mounted on the sled, inventory strictly locks Left to Backpack and Right to Sled"
 	}

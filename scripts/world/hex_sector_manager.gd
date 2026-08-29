@@ -4,6 +4,7 @@ extends Node3D
 const HexWorldTileClass = preload("res://scripts/world/hex_world_tile.gd")
 const SectorBiomeDataClass = preload("res://scripts/resources/sector_biome_data.gd")
 const GlobalEvents = preload("res://scripts/autoloads/global_events.gd")
+const TrainHitchPlatformClass = preload("res://scripts/entities/world/train_hitch_platform.gd")
 
 signal tile_spawned(coord: Vector2i, tile: Node3D)
 signal tile_despawned(coord: Vector2i)
@@ -79,12 +80,21 @@ func _ready() -> void:
 				active_target = pilots[0] as Node3D
 		)
 	
-	# 1. Pre-calculate the Macro Trans-Sector Railway Path from Drop-Off to Extraction
+	# 1. Pre-calculate the Macro Trans-Sector Railway Path from Entrance Boundary to Exit Boundary
 	if is_procedural_railroad_enabled:
-		_plan_macro_railroad_corridor(drop_off_coord, extraction_coord)
+		var rail_start: Vector2i = get_railroad_entrance_boundary_coord()
+		var rail_end: Vector2i = get_railroad_exit_boundary_coord()
+		_plan_macro_railroad_corridor(rail_start, rail_end)
 	
 	# 2. Generate initial sector chunks
 	generate_initial_sector()
+	
+	# 3. Spawn Mountain Tunnel Portals & Moving Train Convoy if active heist
+	if is_procedural_railroad_enabled:
+		_spawn_mountain_tunnel_portals()
+		var is_active_rail: bool = biome_data.get("is_railroad_active") if "is_railroad_active" in biome_data else false
+		if is_active_rail:
+			_spawn_moving_train_convoy()
 
 func _resolve_initial_target() -> void:
 	if not active_target:
@@ -142,6 +152,20 @@ func generate_initial_sector(center_coord: Vector2i = Vector2i.ZERO) -> void:
 		_rails_container = Node3D.new()
 		_rails_container.name = "RailsContainer"
 		add_child(_rails_container)
+		
+	if not biome_data:
+		biome_data = load("res://resources/biomes/temperate_permafrost.tres")
+		if not biome_data:
+			biome_data = SectorBiomeDataClass.new()
+		
+	if is_procedural_railroad_enabled and _macro_railroad_path.is_empty():
+		var rail_start: Vector2i = get_railroad_entrance_boundary_coord()
+		var rail_end: Vector2i = get_railroad_exit_boundary_coord()
+		_plan_macro_railroad_corridor(rail_start, rail_end)
+		_spawn_mountain_tunnel_portals()
+		var is_active_rail: bool = biome_data.get("is_railroad_active") if "is_railroad_active" in biome_data else false
+		if is_active_rail:
+			_spawn_moving_train_convoy()
 		
 	_current_center_coord = center_coord
 	var center_world: Vector3 = axial_to_world_pos(center_coord)
@@ -279,10 +303,27 @@ func _spawn_tile_at(coord: Vector2i) -> void:
 	_active_tiles[coord] = tile
 	
 	# If this tile is part of the macro trans-sector railroad, instantiate its 3D track piece
-	if is_procedural_railroad_enabled and _macro_rail_segments.has(coord) and not is_wall and not is_void:
+	if is_procedural_railroad_enabled and _macro_rail_segments.has(coord) and not is_void:
 		_spawn_streamed_rail_segment_at(coord, tile)
 		
 	tile_spawned.emit(coord, tile)
+
+## Computes the lateral meander offset of the canyon corridor at a given longitudinal distance
+func get_canyon_meander_offset(along: float, axis_len: float) -> float:
+	if axis_len <= 10.0:
+		return 0.0
+		
+	# Smooth fade at entrance (0..60m) and exit (L-60m..L) so portals stay centered
+	var t_start: float = clampf(along / 60.0, 0.0, 1.0)
+	var t_end: float = clampf((axis_len - along) / 60.0, 0.0, 1.0)
+	var envelope: float = smoothstep(0.0, 1.0, t_start) * smoothstep(0.0, 1.0, t_end)
+	
+	# Harmonic meander waves (sweeping S-curves across canyon)
+	var wave1: float = sin(along * (TAU / 320.0)) * 28.0
+	var wave2: float = sin(along * (TAU / 680.0) + 1.2) * 20.0
+	var wave3: float = cos(along * (TAU / 180.0) + 0.6) * 8.0
+	
+	return (wave1 + wave2 + wave3) * envelope
 
 ## Evaluates whether a coordinate lies on the lateral boundary of the valley corridor
 func _evaluate_boundary_status(coord: Vector2i) -> Dictionary:
@@ -294,8 +335,8 @@ func _evaluate_boundary_status(coord: Vector2i) -> Dictionary:
 	var w_start: Vector3 = axial_to_world_pos(drop_off_coord)
 	var w_end: Vector3 = axial_to_world_pos(extraction_coord)
 	
-	# Open entrance & exit passes (Drop-Off & Extraction zones are always open)
-	if w_pos.distance_to(w_start) <= 22.0 or w_pos.distance_to(w_end) <= 22.0:
+	# Open entrance & exit passes (Drop-Off & Extraction zones are open in the valley floor)
+	if w_pos.distance_to(w_start) <= 16.0 or w_pos.distance_to(w_end) <= 16.0:
 		return {"is_wall": false, "is_void": false}
 		
 	var axis_vec: Vector3 = w_end - w_start
@@ -308,10 +349,13 @@ func _evaluate_boundary_status(coord: Vector2i) -> Dictionary:
 	
 	var rel: Vector3 = w_pos - w_start
 	var along: float = rel.dot(axis_dir)
-	var lat_dist: float = absf(rel.dot(lat_dir))
+	var lat_val: float = rel.dot(lat_dir)
+	
+	var meander_center: float = get_canyon_meander_offset(along, axis_len)
+	var lat_dist: float = absf(lat_val - meander_center)
 	
 	var valley_width_m: float = float(biome_data.get("valley_width_hexes") if "valley_width_hexes" in biome_data else 8) * 6.0 * SQRT_3 * 0.5
-	var outside_corridor: bool = (lat_dist > valley_width_m) or (along < -24.0) or (along > axis_len + 24.0)
+	var outside_corridor: bool = (lat_dist > valley_width_m) or (along < -18.0) or (along > axis_len + 18.0)
 	
 	if outside_corridor:
 		if mode == SectorBiomeDataClass.BoundaryMode.VALLEY_CLIFF_FACES:
@@ -340,6 +384,16 @@ func _calculate_rail_proximity(coord: Vector2i) -> Dictionary:
 	var target_y: float = sample_terrain_surface_y(nearest_pos.x, nearest_pos.z)
 	return {"dist": min_dist, "y": target_y}
 
+## Evaluates Hermite cubic interpolation for smooth continuous 2D/3D track curvature
+func _sample_smooth_hermite_2d(p0: Vector3, t0: Vector3, p1: Vector3, t1: Vector3, t: float) -> Vector3:
+	var t2: float = t * t
+	var t3: float = t2 * t
+	var h00: float = 2.0 * t3 - 3.0 * t2 + 1.0
+	var h10: float = t3 - 2.0 * t2 + t
+	var h01: float = -2.0 * t3 + 3.0 * t2
+	var h11: float = t3 - t2
+	return (p0 * h00) + (t0 * h10) + (p1 * h01) + (t1 * h11)
+
 ## Spawns multi-chord ground-conforming 3D rail pieces strictly on top of the undulating rolling terrain
 func _spawn_streamed_rail_segment_at(coord: Vector2i, tile: Node3D) -> void:
 	var seg_info: Dictionary = _macro_rail_segments[coord]
@@ -347,22 +401,31 @@ func _spawn_streamed_rail_segment_at(coord: Vector2i, tile: Node3D) -> void:
 	if next_coord == coord:
 		return
 		
-	var from_world_2d: Vector3 = axial_to_world_pos(coord)
-	var to_world_2d: Vector3 = axial_to_world_pos(next_coord)
+	var idx: int = seg_info.get("path_index", -1)
+	var total_nodes: int = _macro_railroad_path.size()
+	
+	var p_prev: Vector3 = axial_to_world_pos(_macro_railroad_path[idx - 1]) if (idx > 0 and idx < total_nodes) else axial_to_world_pos(coord)
+	var p_cur: Vector3 = axial_to_world_pos(coord)
+	var p_next: Vector3 = axial_to_world_pos(next_coord)
+	var p_after: Vector3 = axial_to_world_pos(_macro_railroad_path[idx + 2]) if (idx + 2 < total_nodes and idx >= 0) else axial_to_world_pos(next_coord)
+	
+	var t_cur: Vector3 = (p_next - p_prev) * 0.5 if idx > 0 else (p_next - p_cur)
+	var t_next: Vector3 = (p_after - p_cur) * 0.5 if (idx + 2 < total_nodes and idx >= 0) else (p_next - p_cur)
 	
 	var is_active: bool = biome_data.get("is_railroad_active") if "is_railroad_active" in biome_data else false
 	
 	var multi_segment_root: Node3D = Node3D.new()
 	multi_segment_root.name = "RailSegmentGroup_%d_%d" % [coord.x, coord.y]
 	
-	# Subdivide into 4 multi-chord sub-segments so tracks hug convex hill crests and concave valleys perfectly
-	var sub_steps: int = 4
+	# Subdivide into 6 multi-chord sub-segments with smooth tangent curvature
+	# Each sub-chord transitions ~8-10 degrees instead of a sharp 60-degree snap
+	var sub_steps: int = 6
 	for s: int in range(sub_steps):
 		var t1: float = float(s) / float(sub_steps)
 		var t2: float = float(s + 1) / float(sub_steps)
 		
-		var p1: Vector3 = from_world_2d.lerp(to_world_2d, t1)
-		var p2: Vector3 = from_world_2d.lerp(to_world_2d, t2)
+		var p1: Vector3 = _sample_smooth_hermite_2d(p_cur, t_cur, p_next, t_next, t1)
+		var p2: Vector3 = _sample_smooth_hermite_2d(p_cur, t_cur, p_next, t_next, t2)
 		
 		# Sample continuous terrain height at each sub-vertex (+0.14m above ground)
 		p1.y = sample_terrain_surface_y(p1.x, p1.z) + 0.14
@@ -384,10 +447,10 @@ func _spawn_streamed_rail_segment_at(coord: Vector2i, tile: Node3D) -> void:
 		tile.add_child(multi_segment_root)
 	_active_rail_segments[coord] = multi_segment_root
 	
-	# Check if this segment carries an abandoned loot freight car
-	if seg_info.get("has_car", false):
-		var mid_2d: Vector3 = (from_world_2d + to_world_2d) * 0.5
-		var dir_3d: Vector3 = (to_world_2d - from_world_2d).normalized()
+	# Check if this segment carries an abandoned loot freight car (derelict tracks only)
+	if not is_active and seg_info.get("has_car", false):
+		var mid_2d: Vector3 = _sample_smooth_hermite_2d(p_cur, t_cur, p_next, t_next, 0.5)
+		var dir_3d: Vector3 = (p_next - p_cur).normalized()
 		var car_pos: Vector3 = mid_2d
 		car_pos.y = sample_terrain_surface_y(mid_2d.x, mid_2d.z) + 1.25
 		
@@ -428,29 +491,51 @@ func _plan_macro_railroad_corridor(start: Vector2i, end: Vector2i) -> void:
 	var min_r: int = mini(start.y, end.y) - 4
 	var max_r: int = maxi(start.y, end.y) + 4
 	
+	var w_start: Vector3 = axial_to_world_pos(start)
+	var w_end: Vector3 = axial_to_world_pos(end)
+	var axis_vec: Vector3 = w_end - w_start
+	var axis_len: float = axis_vec.length()
+	var axis_dir: Vector3 = axis_vec / axis_len if axis_len > 1.0 else Vector3.FORWARD
+	var lat_dir: Vector3 = Vector3(-axis_dir.z, 0.0, axis_dir.x)
+	var valley_width_m: float = float(biome_data.get("valley_width_hexes") if "valley_width_hexes" in biome_data else 10) * 6.0 * SQRT_3 * 0.5
+	var max_lat_allowed: float = valley_width_m + 16.0
+	
 	var hill_noise: FastNoiseLite = FastNoiseLite.new()
 	hill_noise.seed = world_seed + 7771
 	hill_noise.frequency = 0.009
 	var r_outer: float = biome_data.get("hex_cell_outer_radius_m") if "hex_cell_outer_radius_m" in biome_data else 6.0
 	var c_thresh: float = biome_data.get("chasm_threshold") if "chasm_threshold" in biome_data else -0.32
 	
-	# 1. Register macro sector grid points
+	# 1. Register macro sector grid points within corridor
 	for q: int in range(min_q, max_q + 1):
 		for r: int in range(min_r, max_r + 1):
 			var c: Vector2i = Vector2i(q, r)
 			var w_pos: Vector3 = axial_to_world_pos(c)
+			
+			var rel: Vector3 = w_pos - w_start
+			var along: float = rel.dot(axis_dir)
+			var lat_val: float = rel.dot(lat_dir)
+			var meander_center: float = get_canyon_meander_offset(along, axis_len)
+			var lat_dist: float = absf(lat_val - meander_center)
+			
+			if lat_dist > max_lat_allowed and c != start and c != end:
+				continue
+				
 			astar.add_point(id_counter, Vector2(w_pos.x, w_pos.z))
 			
 			var is_spring: bool = _evaluate_hot_spring_spawn(c)
 			var p_val: float = hill_noise.get_noise_2d(w_pos.x, w_pos.z)
 			var is_chasm: bool = (p_val < c_thresh) and not is_spring
 			
+			var base_weight: float = 1.0
 			if is_spring:
-				astar.set_point_weight_scale(id_counter, 150.0) # Avoid hot springs
+				base_weight = 150.0 # Avoid hot springs
 			elif is_chasm:
-				astar.set_point_weight_scale(id_counter, 80.0) # Avoid crevasses
-			else:
-				astar.set_point_weight_scale(id_counter, 1.0)
+				base_weight = 80.0 # Avoid crevasses
+				
+			# Natural centerline tracking penalty creates winding tracks that follow the canyon meander
+			var meander_weight: float = 1.0 + (lat_dist / (valley_width_m + 1.0)) * 2.0
+			astar.set_point_weight_scale(id_counter, base_weight * meander_weight)
 				
 			coord_to_id[c] = id_counter
 			id_to_coord[id_counter] = c
@@ -493,7 +578,8 @@ func _plan_macro_railroad_corridor(start: Vector2i, end: Vector2i) -> void:
 		
 		_macro_rail_segments[cur_c] = {
 			"next": next_c,
-			"has_car": has_car
+			"has_car": has_car,
+			"path_index": idx
 		}
 		
 	railroad_generated.emit(_macro_railroad_path.size())
@@ -728,3 +814,197 @@ func get_active_tile_count() -> int:
 
 func get_railroad_path() -> Array[Vector2i]:
 	return _macro_railroad_path
+
+func get_active_moving_train() -> Node:
+	return _moving_train_instance
+
+## Generates a smooth 3D Curve3D spline matching the multi-chord track geometry
+func get_macro_railroad_curve() -> Curve3D:
+	var curve: Curve3D = Curve3D.new()
+	var total_nodes: int = _macro_railroad_path.size()
+	if total_nodes < 2:
+		return curve
+		
+	var sub_steps: int = 6
+	for idx: int in range(total_nodes - 1):
+		var p_prev: Vector3 = axial_to_world_pos(_macro_railroad_path[idx - 1]) if idx > 0 else axial_to_world_pos(_macro_railroad_path[idx])
+		var p_cur: Vector3 = axial_to_world_pos(_macro_railroad_path[idx])
+		var p_next: Vector3 = axial_to_world_pos(_macro_railroad_path[idx + 1])
+		var p_after: Vector3 = axial_to_world_pos(_macro_railroad_path[idx + 2]) if idx + 2 < total_nodes else axial_to_world_pos(_macro_railroad_path[idx + 1])
+		
+		var t_cur: Vector3 = (p_next - p_prev) * 0.5 if idx > 0 else (p_next - p_cur)
+		var t_next: Vector3 = (p_after - p_cur) * 0.5 if idx + 2 < total_nodes else (p_next - p_cur)
+		
+		for s: int in range(sub_steps):
+			var t: float = float(s) / float(sub_steps)
+			var pt: Vector3 = _sample_smooth_hermite_2d(p_cur, t_cur, p_next, t_next, t)
+			pt.y = sample_terrain_surface_y(pt.x, pt.z) + 0.35 + 0.16 # Positioned directly on rails
+			curve.add_point(pt)
+			
+	# Add final endpoint
+	var last_c: Vector2i = _macro_railroad_path.back()
+	var last_pt: Vector3 = axial_to_world_pos(last_c)
+	last_pt.y = sample_terrain_surface_y(last_pt.x, last_pt.z) + 0.35 + 0.16
+	curve.add_point(last_pt)
+	
+	return curve
+
+var _moving_train_instance: Node = null
+
+func _spawn_moving_train_convoy() -> void:
+	if _macro_railroad_path.is_empty():
+		return
+		
+	var curve: Curve3D = get_macro_railroad_curve()
+	if curve.get_point_count() < 2:
+		return
+		
+	var train_node: MovingTrain = MovingTrain.new()
+	train_node.name = "MovingTrainConvoy"
+	
+	# Load train scenes
+	var loco_scene: PackedScene = load("res://scenes/entities/train/ArmoredLocomotive.tscn")
+	var boxcar_scene: PackedScene = load("res://scenes/entities/train/ArmoredBoxcar.tscn")
+	var hitch_scene: PackedScene = load("res://scenes/entities/train/CircularHitchPlatform.tscn")
+	
+	var cars: Array = []
+	var hitches: Array = []
+	if loco_scene:
+		var loco: TrainCar = loco_scene.instantiate() as TrainCar
+		loco.name = "ArmoredLocomotive"
+		train_node.add_child(loco)
+		cars.append(loco)
+	if boxcar_scene:
+		var car1: TrainCar = boxcar_scene.instantiate() as TrainCar
+		car1.name = "ArmoredBoxcar_1"
+		train_node.add_child(car1)
+		cars.append(car1)
+		
+		var car2: TrainCar = boxcar_scene.instantiate() as TrainCar
+		car2.name = "ArmoredBoxcar_2"
+		train_node.add_child(car2)
+		cars.append(car2)
+		
+	if hitch_scene:
+		for i: int in range(cars.size()):
+			var hitch: TrainCar = hitch_scene.instantiate() as TrainCar
+			hitch.name = "HitchPlatform_%d" % i
+			hitch.car_index = i
+			hitch.set("lead_car", cars[i])
+			if i + 1 < cars.size():
+				hitch.set("trailing_car", cars[i + 1])
+			train_node.add_child(hitch)
+			hitches.append(hitch)
+		
+	add_child(train_node)
+	train_node.initialize_train_on_path(curve, cars, hitches)
+	_moving_train_instance = train_node
+
+## Computes the boundary hex coordinate for the railroad entrance (in cliff face behind Drop-Off)
+func get_railroad_entrance_boundary_coord() -> Vector2i:
+	var step_dir: Vector2i = Vector2i(sign(extraction_coord.x - drop_off_coord.x), sign(extraction_coord.y - drop_off_coord.y))
+	if step_dir == Vector2i.ZERO:
+		step_dir = Vector2i(1, -1)
+	return drop_off_coord - step_dir * 4
+
+## Computes the boundary hex coordinate for the railroad exit (in cliff face past Extraction)
+func get_railroad_exit_boundary_coord() -> Vector2i:
+	var step_dir: Vector2i = Vector2i(sign(extraction_coord.x - drop_off_coord.x), sign(extraction_coord.y - drop_off_coord.y))
+	if step_dir == Vector2i.ZERO:
+		step_dir = Vector2i(1, -1)
+	return extraction_coord + step_dir * 4
+
+func _spawn_mountain_tunnel_portals() -> void:
+	if _macro_railroad_path.is_empty():
+		return
+		
+	var start_coord: Vector2i = _macro_railroad_path.front()
+	var exit_coord: Vector2i = _macro_railroad_path.back()
+	
+	var start_pos: Vector3 = axial_to_world_pos(start_coord)
+	start_pos.y = sample_terrain_surface_y(start_pos.x, start_pos.z)
+	var exit_pos: Vector3 = axial_to_world_pos(exit_coord)
+	exit_pos.y = sample_terrain_surface_y(exit_pos.x, exit_pos.z)
+	
+	var fwd_start: Vector3 = Vector3(0, 0, 1)
+	if _macro_railroad_path.size() >= 2:
+		var p1: Vector3 = axial_to_world_pos(_macro_railroad_path[1])
+		fwd_start = (p1 - start_pos).normalized()
+		
+	var fwd_exit: Vector3 = Vector3(0, 0, 1)
+	if _macro_railroad_path.size() >= 2:
+		var p_prev: Vector3 = axial_to_world_pos(_macro_railroad_path[_macro_railroad_path.size() - 2])
+		fwd_exit = (exit_pos - p_prev).normalized()
+	
+	var entrance_portal: StaticBody3D = _create_tunnel_portal_mesh("EntranceCavePortal", start_pos, fwd_start)
+	var exit_portal: StaticBody3D = _create_tunnel_portal_mesh("ExtractionTunnelPortal", exit_pos, -fwd_exit)
+	
+	if _rails_container:
+		_rails_container.add_child(entrance_portal)
+		_rails_container.add_child(exit_portal)
+	else:
+		add_child(entrance_portal)
+		add_child(exit_portal)
+
+func _create_tunnel_portal_mesh(p_name: String, pos: Vector3, forward_dir: Vector3 = Vector3.FORWARD) -> StaticBody3D:
+	var portal: StaticBody3D = StaticBody3D.new()
+	portal.name = p_name
+	portal.position = pos
+	
+	if forward_dir.length_squared() > 0.01:
+		var rot_y: float = atan2(forward_dir.x, forward_dir.z)
+		portal.rotation = Vector3(0, rot_y, 0)
+	
+	portal.collision_layer = 1
+	portal.collision_mask = 7
+	
+	# Heavy Arch Stone Frame (11m wide, 9m high, 6.5m deep) to embed seamlessly into 16m cliff faces
+	var arch_mesh: MeshInstance3D = MeshInstance3D.new()
+	var box: BoxMesh = BoxMesh.new()
+	box.size = Vector3(11.0, 9.0, 6.5)
+	arch_mesh.mesh = box
+	arch_mesh.position.y = 4.5
+	var rock_mat: StandardMaterial3D = StandardMaterial3D.new()
+	rock_mat.albedo_color = Color(0.16, 0.18, 0.20, 1.0)
+	rock_mat.roughness = 0.95
+	arch_mesh.material_override = rock_mat
+	portal.add_child(arch_mesh)
+	
+	# Cavern Mouth Inset (Pitch Black Interior Cavity)
+	var cavern_mouth: MeshInstance3D = MeshInstance3D.new()
+	var mouth_box: BoxMesh = BoxMesh.new()
+	mouth_box.size = Vector3(6.0, 6.0, 1.2)
+	cavern_mouth.mesh = mouth_box
+	cavern_mouth.position = Vector3(0, 3.2, 3.26)
+	var black_mat: StandardMaterial3D = StandardMaterial3D.new()
+	black_mat.albedo_color = Color(0.01, 0.01, 0.02, 1.0)
+	black_mat.roughness = 1.0
+	cavern_mouth.material_override = black_mat
+	portal.add_child(cavern_mouth)
+	
+	# Red Industrial Warning Beacons on Arch Corners
+	for light_x: float in [-3.5, 3.5]:
+		var light_mesh: MeshInstance3D = MeshInstance3D.new()
+		var cyl: CylinderMesh = CylinderMesh.new()
+		cyl.top_radius = 0.22
+		cyl.bottom_radius = 0.22
+		cyl.height = 0.45
+		light_mesh.mesh = cyl
+		light_mesh.position = Vector3(light_x, 6.2, 3.3)
+		var warn_mat: StandardMaterial3D = StandardMaterial3D.new()
+		warn_mat.albedo_color = Color(1.0, 0.25, 0.05, 1.0)
+		warn_mat.emission_enabled = true
+		warn_mat.emission = Color(1.0, 0.2, 0.0, 1.0)
+		warn_mat.emission_energy_multiplier = 4.5
+		light_mesh.material_override = warn_mat
+		portal.add_child(light_mesh)
+	
+	# Solid Wall Collider
+	var col: CollisionShape3D = CollisionShape3D.new()
+	var shape: BoxShape3D = BoxShape3D.new()
+	shape.size = Vector3(11.0, 9.0, 6.5)
+	col.shape = shape
+	col.position.y = 4.5
+	portal.add_child(col)
+	
+	return portal

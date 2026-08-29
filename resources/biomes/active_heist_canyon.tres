@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="SectorBiomeData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/sector_biome_data.gd" id="1_biome"]
+
+[resource]
+script = ExtResource("1_biome")
+biome_id = &"active_heist_canyon"
+biome_name = "Kryo-Corridor Active Rail Canyon"
+description = "A long, winding glacial canyon carrying the trans-continental Corpo mag-rail convoy. High mountain cliff walls flank the corridor from entrance to extraction."
+base_ambient_temp_c = -18.0
+min_storm_temp_c = -38.0
+blizzard_frequency = 0.35
+base_smog_index = 0.08
+elevation_amplitude = 2.0
+elevation_frequency = 0.018
+plateau_tier_height_m = 4.2
+plateau_threshold = 0.32
+chasm_threshold = -0.35
+hex_cell_outer_radius_m = 6.0
+surface_weights = {
+&"pack": 0.55,
+&"powder": 0.20,
+&"ice": 0.15,
+&"firn": 0.07,
+&"crust": 0.03
+}
+boulder_density = 0.08
+pine_tree_density = 0.12
+industrial_debris_density = 0.04
+overturned_sled_wreck_chance = 0.02
+abandoned_corpo_facility_chance = 0.01
+hot_spring_basin_chance = 0.01
+hot_spring_cluster_boost = 0.10
+ground_crate_cache_chance = 0.06
+boundary_mode = 0
+valley_width_hexes = 12
+is_railroad_active = true
+rail_embankment_raise_m = 0.35
+rail_subgrade_smoothing = 0.70

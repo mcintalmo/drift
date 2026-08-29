@@ -118,13 +118,17 @@ func breach_doors() -> void:
 	if door_hurtbox:
 		door_hurtbox.is_invulnerable = true
 		
+	var door_col: CollisionShape3D = get_node_or_null("DoorCollision") as CollisionShape3D
+	if door_col:
+		door_col.set_deferred("disabled", true)
+		
 	# Slide Left & Right Doors Open
 	if left_door:
 		var tw_l: Tween = create_tween()
-		tw_l.tween_property(left_door, "position:z", left_door.position.z + 2.8, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw_l.tween_property(left_door, "position:z", left_door.position.z + 3.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	if right_door:
 		var tw_r: Tween = create_tween()
-		tw_r.tween_property(right_door, "position:z", right_door.position.z - 2.8, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw_r.tween_property(right_door, "position:z", right_door.position.z - 3.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		
 	# Turn lock light green
 	if lock_vis:
@@ -187,7 +191,7 @@ func set_train_speed(speed: float) -> void:
 		forward_speed_ms = speed
 
 func _setup_geometry_if_missing() -> void:
-	if get_node_or_null("BoxcarCollision"):
+	if get_node_or_null("BoxcarCollision") or get_node_or_null("FloorCollision") or get_node_or_null("LocoCollision") or get_node_or_null("HitchCollision"):
 		return
 		
 	# Solid Boxcar Platform Collision (Floor + Roof + Walls)

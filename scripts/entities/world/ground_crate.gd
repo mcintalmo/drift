@@ -32,18 +32,34 @@ func _ready() -> void:
 	
 	_populate_loot()
 
-## Handles player interaction with first-time loot channel
+## Handles player hold-to-interact looting and unlocking channel
 func interact_loot(player: Node3D, donut: Node, on_open_inventory: Callable) -> void:
-	if is_searched and not is_locked:
-		# Already unlocked and searched: instant access
-		if on_open_inventory.is_valid():
-			on_open_inventory.call()
+	if not is_locked:
+		# Unlocked crate: quick 0.35s channel to open inventory screen
+		if donut and donut.has_method("start_channel"):
+			loot_search_started.emit()
+			donut.start_channel(
+				"Opening Cargo Crate...",
+				0.35,
+				func() -> void:
+					loot_search_completed.emit()
+					if on_open_inventory.is_valid():
+						on_open_inventory.call(),
+				func() -> void:
+					pass,
+				self,
+				player,
+				3.8
+			)
+		else:
+			if on_open_inventory.is_valid():
+				on_open_inventory.call()
 		return
 		
 	if donut and donut.has_method("start_channel"):
 		loot_search_started.emit()
 		donut.start_channel(
-			"Searching Crate...",
+			"Unlocking Crate...",
 			search_duration,
 			func() -> void:
 				is_searched = true
@@ -53,9 +69,9 @@ func interact_loot(player: Node3D, donut: Node, on_open_inventory: Callable) -> 
 					on_open_inventory.call(),
 			func() -> void:
 				pass, # Cancelled
-			self,
+			lock_mesh if lock_mesh else self,
 			player,
-			3.5
+			3.8
 		)
 	else:
 		# Fallback if no donut provided
@@ -82,11 +98,12 @@ func _on_lock_breached() -> void:
 	if hurtbox:
 		hurtbox.is_invulnerable = true
 	
-	# Rotate lid open
+	# Smoothly rotate lid open
 	if lid_mesh:
-		lid_mesh.rotation_degrees.x = -55.0
-		lid_mesh.position.y = 1.3
-		lid_mesh.position.z = -0.3
+		var tw: Tween = create_tween()
+		tw.tween_property(lid_mesh, "rotation_degrees:x", -65.0, 0.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(lid_mesh, "position:y", 1.25, 0.4)
+		tw.parallel().tween_property(lid_mesh, "position:z", -0.35, 0.4)
 	
 	# Turn lock light green
 	if lock_mesh:

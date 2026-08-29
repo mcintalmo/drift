@@ -14,14 +14,14 @@ func physics_update(delta: float) -> void:
 	
 	var riding_car: TrainCar = _get_riding_train_car()
 	
-	# State transition: Just landed on moving train roof from the air/grapple
+	# State transition: Just landed on moving train roof or interior floor from air/grapple
 	if riding_car and not _prev_riding_car:
-		# Reset horizontal velocity to local frame (standing still on roof)
+		# Reset horizontal velocity to local frame (standing still on train platform)
 		pilot.velocity.x = 0.0
 		pilot.velocity.z = 0.0
 		pilot.velocity.y = -2.0
 	
-	# State transition: Just stepped or fell off the train roof into the open air
+	# State transition: Just stepped or fell off the train into open air
 	if not riding_car and _prev_riding_car and delta > 0.0:
 		# Transfer full train forward velocity into the air
 		pilot.velocity += (_prev_riding_car.delta_displacement / delta)
@@ -31,7 +31,7 @@ func physics_update(delta: float) -> void:
 	# Check jetpack / jump trigger
 	if Input.is_action_pressed(&"pilot_jump_jetpack") and jetpack and jetpack.has_fuel():
 		if riding_car and delta > 0.0:
-			# Impart full train platform momentum when launching off the moving roof
+			# Impart full train platform momentum when launching off the moving platform
 			pilot.velocity += (riding_car.delta_displacement / delta)
 			_prev_riding_car = null
 		transition_requested.emit(&"JetpackState")
@@ -52,17 +52,29 @@ func physics_update(delta: float) -> void:
 				if w_comp and w_comp.get("is_tethered") == true and w_comp.has_method("detach_tether"):
 					w_comp.call("detach_tether")
 	
-	# Hold-to-Interact Plasma Torch / Coupler Cutting Channel (E / F / LMB)
-	var is_interact_held: bool = Input.is_action_pressed(&"pilot_interact") or Input.is_action_pressed(&"pilot_melee_breach")
+	# Hold-to-Interact Channel (E / F / LMB) for Crates, Doors, and Couplers
+	var is_interact_held: bool = (
+		Input.is_action_pressed(&"pilot_interact") or 
+		Input.is_action_pressed(&"pilot_mount_dismount") or 
+		Input.is_action_pressed(&"pilot_melee_breach")
+	)
 	var donut: ActionProgressDonut = _get_action_donut()
 	
 	if is_interact_held:
 		if donut and not donut.is_channeling:
 			var target_interactable: Node = _find_nearby_interact_target()
-			if target_interactable and target_interactable.has_method("interact_plasma_torch"):
-				target_interactable.call("interact_plasma_torch", pilot, donut)
+			if target_interactable:
+				if target_interactable is GroundCrate:
+					var crate: GroundCrate = target_interactable as GroundCrate
+					var inv_ui: HexInventoryUI = _get_inventory_ui()
+					crate.interact_loot(pilot, donut, func() -> void:
+						if inv_ui:
+							inv_ui.open_contextual_inventory()
+					)
+				elif target_interactable.has_method("interact_plasma_torch"):
+					target_interactable.call("interact_plasma_torch", pilot, donut)
 	else:
-		# Released interact/attack button while channeling -> cancel and reset donut
+		# Released interact/attack button while channeling -> cancel and reset donut to 0
 		if donut and donut.is_channeling:
 			donut.cancel_channel()
 	
@@ -119,14 +131,14 @@ func physics_update(delta: float) -> void:
 			if absf(riding_car.delta_yaw_rad) > 0.00001:
 				pilot.rotate_y(riding_car.delta_yaw_rad)
 		
-		# Relative locomotion along moving train roof
+		# Relative locomotion along moving train roof or interior floor
 		if input_dir.length() > 0.05:
 			var target_vx: float = actual_move_vec.x * move_speed
 			var target_vz: float = actual_move_vec.z * move_speed
 			pilot.velocity.x = move_toward(pilot.velocity.x, target_vx, 25.0 * delta)
 			pilot.velocity.z = move_toward(pilot.velocity.z, target_vz, 25.0 * delta)
 		else:
-			# Standing still relative to roof
+			# Standing still relative to train floor
 			pilot.velocity.x = move_toward(pilot.velocity.x, 0.0, 35.0 * delta)
 			pilot.velocity.z = move_toward(pilot.velocity.z, 0.0, 35.0 * delta)
 		
@@ -170,15 +182,29 @@ func physics_update(delta: float) -> void:
 	
 	pilot.move_and_slide()
 
-## Finds nearest interactable coupler or lock within interaction range
+## Finds nearest interactable crate, door, or coupler within interaction range
 func _find_nearby_interact_target() -> Node:
 	if not pilot or not pilot.is_inside_tree():
 		return null
 		
 	var p_pos: Vector3 = pilot.global_position
-	var min_dist: float = 4.2
+	var min_dist: float = 4.5
 	var best_target: Node = null
 	
+	# 1. Prioritize nearby loot crates inside boxcar or on ground
+	var crates: Array[Node] = pilot.get_tree().get_nodes_in_group(&"loot_crates")
+	for c_node: Node in crates:
+		if is_instance_valid(c_node):
+			var c_pos: Vector3 = c_node.global_position if c_node.is_inside_tree() else (c_node as Node3D).position
+			var dist: float = p_pos.distance_to(c_pos)
+			if dist < 3.2 and dist < min_dist:
+				min_dist = dist
+				best_target = c_node
+				
+	if best_target:
+		return best_target
+	
+	# 2. Check train convoy nodes (Hitch platforms and Boxcars)
 	var convoy: Array[Node] = pilot.get_tree().get_nodes_in_group(&"train_convoy")
 	for node: Node in convoy:
 		if is_instance_valid(node):
@@ -198,7 +224,15 @@ func _get_action_donut() -> ActionProgressDonut:
 		return donuts[0] as ActionProgressDonut
 	return null
 
-## Detects if the pilot is standing on or riding a TrainCar or CircularHitchPlatform
+func _get_inventory_ui() -> HexInventoryUI:
+	if not pilot or not pilot.is_inside_tree():
+		return null
+	var uis: Array[Node] = pilot.get_tree().root.find_children("*HexInventoryUI*", "HexInventoryUI", true, false)
+	if not uis.is_empty() and uis[0] is HexInventoryUI:
+		return uis[0] as HexInventoryUI
+	return null
+
+## Detects if the pilot is standing on or riding a TrainCar, CircularHitchPlatform, or inside Boxcar
 func _get_riding_train_car() -> TrainCar:
 	if not pilot or not pilot.is_inside_tree():
 		return null
@@ -227,14 +261,14 @@ func _get_riding_train_car() -> TrainCar:
 			if car:
 				return car
 				
-	# 3. Proximity check within train car roof or turntable local bounding box
+	# 3. Proximity check within train car roof, interior cabin floor, or turntable local bounding box
 	var convoy: Array[Node] = pilot.get_tree().get_nodes_in_group(&"train_convoy")
 	for node: Node in convoy:
 		if node is TrainCar and node.visible:
 			var car: TrainCar = node as TrainCar
 			var local_pos: Vector3 = car.global_transform.affine_inverse() * pilot.global_position
-			# Enlarged train car & turntable bounds
-			if absf(local_pos.x) <= 2.4 and absf(local_pos.z) <= 5.8 and local_pos.y >= 0.4 and local_pos.y <= 5.8:
+			# Enlarged train car bounds: X in [-2.4, 2.4], Z in [-5.8, 5.8], Y in [0.2, 5.8] (covers inside cabin & roof)
+			if absf(local_pos.x) <= 2.4 and absf(local_pos.z) <= 5.8 and local_pos.y >= 0.2 and local_pos.y <= 5.8:
 				return car
 				
 	return null
